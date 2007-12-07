@@ -25,10 +25,6 @@ the 'T2C' test generation framework.
 #include <stdlib.h>
 #include <string.h>
 
-/*#include "libmem.h"
-#include "libstr.h"
-#include "libfile.h"*/
-
 #include "../include/t2c_util.h"
 #include "../include/t2c_trace.h"
     
@@ -45,6 +41,68 @@ t2c_util_error(const char* msg);
 
 const char* t2c_env_name        = "T2C_ROOT";
 const char* t2c_env_suite_name  = "T2C_SUITE_ROOT";
+
+// Req cat. loading modes.
+typedef enum
+{
+    T2C_RCAT_STOP = 0,
+    T2C_RCAT_HDR_DECL,
+    T2C_RCAT_OPEN_TAG,
+    T2C_RCAT_BODY,
+    T2C_RCAT_CLOSE_TAG
+} T2CRcatMode;
+
+//////////////////////////////////////////////////////////////////////////
+// Create a new TReqInfo structure and fill it with the specified data.
+// Returns NULL if unsuccessful.
+TReqInfoPtr
+t2c_req_info_new(const char* rid, const char* text);
+
+// Deallocate the contents of the TReqInfo structure and then delete 
+// the structure itself.
+// The function does nothing if ri == NULL.
+void 
+t2c_req_info_delete(TReqInfoPtr ri);
+
+// Load the REQ catalogue from the specified file. The catalogue 
+// will be appended at the tail (*ptail) of a list of TReqInfo structures. 
+// New tail of the list will be returned in '*ptail'.  
+// The function returns 0 if the operation cannot be completed (e.g. if 
+// the catalogue is corrupt), nonzero otherwise.
+int
+t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail);
+
+// This function constructs the path to the requirement catalogue and returns
+// the result.
+// The catalogue is expected to be found in 
+//      $T2C_SUITE_ROOT/<suite_subdir>/reqs/<rcat_name>.xml
+// The function does not check if the resulting path exists.
+//
+// The returned pointer should be freed when no longer needed.
+char*
+t2c_get_rcat_path(const char* suite_subdir, const char* rcat_name);
+
+// Return the length of the list (including head). If 'head' is NULL, the function 
+// shall return 0;
+int 
+t2c_req_info_list_length(TReqInfoList* head);
+
+// Create a new TReqInfo structure for 'rid' and 'text' and append it to the list.
+// The structure will be appended after the 'tail' node. A pointer to this structure
+// (i.e. the new tail) will be returned.
+// If 'tail' is NULL, the new node will be the head of a new list.
+// The function returns NULL if the operation cannot be completed.
+TReqInfoList* 
+t2c_req_info_list_append(TReqInfoList* tail, const char* rid, const char* text);
+
+// Allocate an array of 'TReqInfoPtr's and copy the contents of the list there.
+// 'head' should be a fictive head of the list: the real data are expected to
+// begin from head->next.
+// Number of elements in the array is returned in *len.
+// The caller is responsible to free the array when it is no longer needed.
+// The function returns NULL if the operation cannot be completed.
+TReqInfoPtr* 
+t2c_req_info_list_to_array(TReqInfoList* head, int* len);
 
 ///////////////////////////////////////////////////////////////////////////////
 // Implementation
@@ -155,17 +213,17 @@ t2c_get_data_path(const char* suite_subdir, const char* test_name,
 }
 
 char*
-t2c_get_rcat_path(const char* suite_subdir, const char* test_name)
+t2c_get_rcat_path(const char* suite_subdir, const char* rcat_name)
 {
     char* path0 = concat_paths((char*) suite_subdir, "reqs");
-    char* rcat_name = str_sum(test_name, ".xml");
-    char* path1 = concat_paths(path0, rcat_name);
+    char* full_name = str_sum(rcat_name, ".xml");
+    char* path1 = concat_paths(path0, full_name);
     
     char* res = t2c_get_path(path1);
     
     free(path0);
     free(path1);
-    free(rcat_name);
+    free(full_name);
     
     return res;
 }
@@ -631,25 +689,10 @@ t2c_req_info_list_to_array(TReqInfoList* head, int* len)
 }
 
 int
-t2c_rcat_load(const char* rcpath, TReqInfoList** phead, TReqInfoPtr** preqs, int* nreq)
+t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
 {
-    FILE* fd = fopen(rcpath, "r");
-    if (!fd)
-    {
-        fprintf(stderr, "Unable to open file %s\n", rcpath);
-        return 0;
-    }
-
-    *phead = t2c_req_info_list_append(NULL, "", "");    // create a fictive head of the list.
-    if (*phead == NULL)
-    {
-        fprintf(stderr, "Unable to initialize the requirement list.\n");
-        fclose(fd);
-        return 0;
-    }
-
     int bOK = 1;
-    TReqInfoList* tail = *phead;
+    TReqInfoList* tail = *ptail;
 
     char* root_tag[] = {"requirements", NULL};
     char* req_tag[]  = {"req", NULL};
@@ -679,7 +722,7 @@ t2c_rcat_load(const char* rcpath, TReqInfoList** phead, TReqInfoPtr** preqs, int
         if (ferror(fd))
         {
             bOK = 0;
-            fprintf(stderr, "An error occured while reading from %s.\n", rcpath);
+            fprintf(stderr, "An error occured while reading the file containing req catalogue.\n");
             break;
         }
         
@@ -818,22 +861,9 @@ t2c_rcat_load(const char* rcpath, TReqInfoList** phead, TReqInfoPtr** preqs, int
         }
 
         if (!bOK) break;
-
-        //fgets(str, sz, fd);
     } while(!feof(fd));
 
     free(str);
-    fclose(fd);
-
-    if (bOK)
-    {
-        *preqs = t2c_req_info_list_to_array(*phead, nreq);
-        if (!(*preqs))
-        {
-            bOK = 0;
-            fprintf(stderr, "Unable to create the requirement list.\n");
-        }
-    }
 
     // cleanup
     int i;
@@ -843,7 +873,9 @@ t2c_rcat_load(const char* rcpath, TReqInfoList** phead, TReqInfoPtr** preqs, int
     }
 
     free(attribs);
-
+    
+    *ptail = tail;
+    
     return bOK;
 }
 
@@ -990,5 +1022,77 @@ t2c_req_impl(const char* r_id, const char* r_comment,
     free(href_buf);
     free(rlist);
     return;
-}            
-// end
+}      
+
+int 
+t2c_rcat_load(const char* rcat_names[], const char* suite_subdir, 
+    TReqInfoList** phead, TReqInfoPtr** preqs, int* nreq)
+{
+    int bOK = 1; // no error by default
+    if (!phead || !preqs || !nreq || !rcat_names ||!suite_subdir) 
+    {
+        fprintf(stderr, "t2c_rcat_load(): invalid parameters passed\n");
+        return 0;
+    }
+    
+    if (rcat_names[0] == NULL)
+    {
+        fprintf(stderr, "t2c_rcat_load(): the list of req catalogues is empty\n");
+        return 0;
+    }
+    
+    *phead = t2c_req_info_list_append(NULL, "", "");    // create a head of the list.
+    if (*phead == NULL)
+    {
+        fprintf(stderr, "t2c_rcat_load(): unable to initialize requirement list.\n");
+        return 0;
+    }
+    
+    // Walk the list of names and load appropriate req catalogues
+    TReqInfoList* tail = *phead;
+    int found = 0;
+    for (int i = 0; rcat_names[i] != NULL; ++i)
+    {   
+        char* rcpath = t2c_get_rcat_path(suite_subdir, rcat_names[i]);
+        FILE* fd = fopen(rcpath, "r");
+        if (!fd)
+        {
+            fprintf(stderr, "Unable to open file %s\n", rcpath);
+            free(rcpath);
+            continue;
+        }
+        
+        found = 1;  // a file has been found and opened.
+        bOK = t2c_rcat_load_impl(fd, &tail);
+        if (!bOK)
+        {
+            fprintf(stderr, "Invalid requirement catalogue: %s\n", rcpath);
+            free(rcpath);
+            fclose(fd);    
+            break;
+        }
+        
+        free(rcpath);
+        fclose(fd);
+    }
+    
+    if (!found)
+    {
+        bOK = 0;
+        fprintf(stderr, "None of the files containing requirement catalogues could be opened.\n");
+    }
+    
+    if (bOK)
+    {
+        *preqs = t2c_req_info_list_to_array(*phead, nreq);
+        if (!(*preqs))
+        {
+            bOK = 0;
+            fprintf(stderr, "Unable to create the requirement list.\n");
+        }
+    }
+    
+    return bOK;
+}
+
+// the end

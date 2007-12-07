@@ -95,3 +95,4 @@ fi
 # Done
 echo
 echo Build completed successfully
+echo "To use T2C code generator, you will probably need to set T2C_ROOT environment variable to ${T2C_ROOT}" 

@@ -17,7 +17,11 @@
 ///////////////////////////////////////////////////////////////////////////////
 // Utility functions
 ///////////////////////////////////////////////////////////////////////////////
-
+#ifdef __cplusplus
+extern "C"
+{
+#endif 
+    
 // Returns path to the main T2C directory (actually, the contents of 
 // T2C_ROOT environment variable). If the variable is not defined, "/" is returned.
 // If the path has no slash at the end, it is appended.
@@ -57,15 +61,6 @@ char*
 t2c_get_data_path(const char* suite_subdir, const char* test_name, 
                    const char* rel_path);
 
-// This function constructs the path to the requirement catalogue and returns
-// the result.
-// The catalogue is expected to be found in $T2C_ROOT/<suite_subdir>/reqs/<test_name>.xml
-// The function does not check if the resulting path exists.
-//
-// The returned pointer should be freed when no longer needed.
-char*
-t2c_get_rcat_path(const char* suite_subdir, const char* test_name);
-
 //////////////////////////////////////////////////////////////////////////
 // REQ catalogue support: parsing, loading, searching etc.
 //////////////////////////////////////////////////////////////////////////
@@ -87,55 +82,10 @@ typedef struct TReqInfoList_
     struct TReqInfoList_* next;
 } TReqInfoList;
 
-// Loading modes.
-typedef enum
-{
-    T2C_RCAT_STOP = 0,
-    T2C_RCAT_HDR_DECL,
-    T2C_RCAT_OPEN_TAG,
-    T2C_RCAT_BODY,
-    T2C_RCAT_CLOSE_TAG
-} T2CRcatMode;
-
-//////////////////////////////////////////////////////////////////////////
-// Create a new TReqInfo structure and fill it with the specified data.
-// Returns NULL if unsuccessful.
-TReqInfoPtr
-t2c_req_info_new(const char* rid, const char* text);
-
-// Deallocate the contents of the TReqInfo structure and then delete 
-// the structure itself.
-// The function does nothing if ri == NULL.
-void 
-t2c_req_info_delete(TReqInfoPtr ri);
-
 //////////////////////////////////////////////////////////////////////////
 // Traverse the list from the 'head' to its end and deallocate its elements. 
 void 
 t2c_req_info_list_clear(TReqInfoList* head);
-
-// Return the length of the list (including head). If 'head' is NULL, the function 
-// shall return 0;
-int 
-t2c_req_info_list_length(TReqInfoList* head);
-
-// Create a new TReqInfo structure for 'rid' and 'text' and append it to the list.
-// The structure will be appended after the 'tail' node. A pointer to this structure
-// (i.e. the new tail) will be returned.
-// If 'tail' is NULL, the new node will be the head of a new list.
-// The function returns NULL if the operation cannot be completed.
-TReqInfoList* 
-t2c_req_info_list_append(TReqInfoList* tail, const char* rid, const char* text);
-
-// Allocate an array of 'TReqInfoPtr's and copy the contents of the list there.
-// 'head' should be a fictive head of the list: the real data are expected to
-// begin from head->next.
-// Number of elements in the array is returned in *len.
-// The caller is responsible to free the array when it is no longer needed.
-// The function returns NULL if the operation cannot be completed.
-TReqInfoPtr* 
-t2c_req_info_list_to_array(TReqInfoList* head, int* len);
-
 //////////////////////////////////////////////////////////////////////////
 
 // Parse the given string ('str') to find whether it is
@@ -204,17 +154,22 @@ t2c_parse_close_tag(const char* str, const char* name);
 char*
 t2c_unreplace_special_chars(char* str);
 
-// Load the REQ catalogue from the specified file ('rcpath'). The catalogue shall be stored
-// as a list of TReqInfo structures, the head of the list shall be returned in *phead. 
+//////////////////////////////////////////////////////////////////////////
+// Load the REQ catalogues with names specified in NULL-terminated 'rcat_names' array.
+// The catalogue #i is expected to be in the following file
+//      $T2C_SUITE_ROOT/<suite_subdir>/reqs/<rcat_names[i]>.xml
+// The function returns 0 if no catalogues from the list can be loaded (i.e. files not
+// found) or some of them are corrupt. Otherwise nonzero is returned.
+// 
+// The catalogue shall be stored as a list of TReqInfo structures,
+// the head of the list shall be returned in *phead. 
 // Use t2c_req_info_list_clear(*phead) to deallocate the catalogue.
 // The pointers to these TReqInfo structures are also stored in the (*preqs)[] array for
 // future sorting & searching. Number of the elements in the array shall be returned in
 // *nreq.
-// The function returns 0 if the operation cannot be completed, nonzero otherwise.
-int
-t2c_rcat_load(const char* rcpath, TReqInfoList** phead, TReqInfoPtr** preqs, int* nreq);
-
-//////////////////////////////////////////////////////////////////////////
+int 
+t2c_rcat_load(const char* rcat_names[], const char* suite_subdir, 
+    TReqInfoList** phead, TReqInfoPtr** preqs, int* nreq);
 
 // Search the req catalogue ('reqs') for the requirement with the specified ID.
 // 'reqs' - an array of pointers to the TReqInfos, nreq - number of elements in the array.
@@ -353,6 +308,10 @@ extern int pcc_pipe_[2];
 // Type of the test purpose function pointer.
 typedef void (*TTestPurposeType)();
 
+#ifdef	__cplusplus
+}
+#endif
+    
 //////////////////////////////////////////////////////////////////////////
 
 #endif //_T2C_UTIL_H_INCLUDED_

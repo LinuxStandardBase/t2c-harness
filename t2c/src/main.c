@@ -53,7 +53,6 @@ Example:
 #define PATH_LEN 1024       // Maximum path length allowed
 
 #define INPUT_EXT          ".t2c"        // input file extention
-#define INPUT_EXT_OLD      ".ras"        // old input file extention
 
 /************************************************************************/
 // Known top-level tags.
@@ -89,26 +88,39 @@ static char* bl_tag[] = {
 #define IBL_PURPOSE     4
 
 /************************************************************************/
-#define CFG_PARAMS 5        // Number of parameters that can be specified in a .cfg-file.
 #define CFG_COMPILER_POS    0
 #define CFG_COMP_FLAGS_POS  1
 #define CFG_LINK_FLAGS_POS  2
 #define CFG_TET_RECORD_POS  3
 #define CFG_WAIT_TIME_POS   4
+#define CFG_LANGUAGE_POS    5
+#define CFG_SINGLE_POS      6
+
+// Number of parameters that can be specified in a .cfg-file.
+#define CFG_PARAMS (sizeof(cfg_parm_names)/sizeof(cfg_parm_names[0]))        
 
 // Names of the parameters from .cfg-file
-static char* cfg_parm_names[CFG_PARAMS] = {
+static char* cfg_parm_names[] = {
     "COMPILER",
     "COMPILER_FLAGS",
     "LINKER_FLAGS",
     "TET_SCEN_RECORD",
-    "WAIT_TIME"
+    
+    "WAIT_TIME",     // Maximum time for a test to run (in seconds). Default: "30"
+    
+    "LANGUAGE",      // "CPP" for C++-code, any other value for plain C. Default: "C"
+    
+    "SINGLE_PROCESS" // If "YES" or "yes", all tests are executed in the same process, 
+                     // otherwise - in separate process each. Ignored in standalone (debug) mode.
+                     // Default: "no".
 };
 
 /* Values of the parameters from .cfg-file. Use set_defaults() to reset these to their
  * default values.
  */
 static char* cfg_parm_values[CFG_PARAMS] = {
+    NULL,
+    NULL,
     NULL,
     NULL,
     NULL,
@@ -120,12 +132,20 @@ static char* cfg_parm_values[CFG_PARAMS] = {
 // opposite case.
 int bAddTetScenRecord = 1;
 
+// 1 if C++ code is to be generated, 0 otherwise (i.e. plain C)
+// See "LANGUAGE" option in the config file.
+int bGenCpp = 0;
+
+// 1 if all the tests should be executed in a single process, 0 otherwise.
+// See "SINGLE_PROCESS" option in the config file.
+int bSingleProcess = 0;
+
 /************************************************************************/
 #define COMMON_TEST_TPL    "test.tpl"    /* common test case template*/
 #define COMMON_PURPOSE_TPL "purpose.tpl" /* common test purpose template*/
 #define COMMON_TPL_DIR     "/t2c/src/templates/"
 
-#define COMMON_TAGS_NUM     14
+#define COMMON_TAGS_NUM     (sizeof(common_tags)/sizeof(common_tags[0]))
 #define GROUP_NAME_POS      0
 #define OBJECT_NAME_POS     1
 #define TEST_PURPOSES_POS   2
@@ -140,8 +160,9 @@ int bAddTetScenRecord = 1;
 #define TP_FUNCS_POS        11
 #define PCF_FUNCS_POS       12
 #define WAIT_TIME_POS       13
+#define RCAT_NAMES_POS      14
 
-static char* common_tags[COMMON_TAGS_NUM] = { 
+static char* common_tags[] = { 
     "<%group_name%>",
     "<%object_name%>",
     "<%test_purposes%>",
@@ -155,7 +176,8 @@ static char* common_tags[COMMON_TAGS_NUM] = {
     "<%ftemplate%>",
     "<%tp_funcs%>",
     "<%pcf_funcs%>",
-    "<%wait_time%>"
+    "<%wait_time%>",
+    "<%rcat_names%>"
 };
     
 #define MAX_PARAMS_NUM  256
@@ -184,14 +206,22 @@ static char* tags[] = {
 char* func_tests_scenario_file_name = "func_scen";
 
 /* Number of params to be extracted from the header of a .t2c-file  */
-#define HEADER_PARAMS_NUM    2     /*library, libsection*/
+#define HEADER_PARAMS_NUM    (sizeof(hdr_param_name)/sizeof(hdr_param_name[0]))     
 #define PARAM_LIB_POS        0
 #define PARAM_SECTION_POS    1
+#define PARAM_RCAT_POS       2
 
-char* hdr_param_value[HEADER_PARAMS_NUM] = { NULL, NULL };
-char* hdr_param_name[HEADER_PARAMS_NUM] = { "library", 
-                                            "libsection", 
-                                          };
+char* hdr_param_value[] = { 
+    NULL, 
+    NULL,
+    NULL
+};
+    
+char* hdr_param_name[] = { 
+    "library", 
+    "libsection",
+    "additional_req_catalogues"
+};
 
 // The values of $T2C_ROOT and $T2C_SUITE_ROOT.
 char* t2c_root = NULL;
@@ -382,6 +412,7 @@ main (int argc, char* argv[])
         {
             /* process the specified config. file here */
             load_config(argv[ARGV_PARAM_INDEX]);
+            printf("Language is %s\n", (bGenCpp ? "CPP" : "C"));
         }
     }
     
@@ -462,42 +493,42 @@ run_generator (const char* suite_root_in, const char* input_dir,
     char* func_scen_path = NULL;
     char* output_dir_path = NULL;
      
-    suite_root1 = concat_paths (t2c_suite_root, (char*) suite_root_in);
-    suite_root = shorten_path (suite_root1);
+    suite_root1 = concat_paths(t2c_suite_root, (char*)suite_root_in);
+    suite_root = shorten_path(suite_root1);
 
-    path1 = concat_paths (suite_root, (char*) scen_dir_in);
+    path1 = concat_paths(suite_root, (char*)scen_dir_in);
  
-    scen_dir = (char*) shorten_path (path1);
+    scen_dir = (char*)shorten_path(path1);
 
-    if (!is_directory_exists ((char*) scen_dir))
+    if (!is_directory_exists((char*)scen_dir))
     {
-        create_dir ((char*) scen_dir);
+        create_dir((char*)scen_dir);
     }
 
-    scenario_file = alloc_mem_for_string (scenario_file, 
-                                          strlen (scen_dir));
-    scenario_file = str_append (scenario_file, scen_dir);
-    scenario_file = str_append (scenario_file, "/");
-    scenario_file = str_append (scenario_file, func_tests_scenario_file_name);
+    scenario_file = alloc_mem_for_string(scenario_file, 
+                                         strlen (scen_dir));
+    scenario_file = str_append(scenario_file, scen_dir);
+    scenario_file = str_append(scenario_file, "/");
+    scenario_file = str_append(scenario_file, func_tests_scenario_file_name);
 
     /*
     Clear the func_scen file.
     */
-    ffunc_scen = fopen (scenario_file, "w");
+    ffunc_scen = fopen(scenario_file, "w");
     if (!ffunc_scen)
     {
         fprintf (stderr, "Unable to open local scenario file: \n %s\n", scenario_file);
     }
-    fclose (ffunc_scen);
+    fclose(ffunc_scen);
 
-    output_dir1 = concat_paths (suite_root, (char*) output_dir_in);
-    output_dir = shorten_path (output_dir1);
+    output_dir1 = concat_paths(suite_root, (char*) output_dir_in);
+    output_dir = shorten_path(output_dir1);
     
-    input_path1 = alloc_mem_for_string (input_path1, strlen (input_dir));
+    input_path1 = alloc_mem_for_string(input_path1, strlen (input_dir));
     input_path1 = str_append(input_path1, input_dir);
     
-    input_path2 = concat_paths (suite_root, input_path1);
-    input_path = shorten_path (input_path2);
+    input_path2 = concat_paths(suite_root, input_path1);
+    input_path = shorten_path(input_path2);
 
     if (input_path[strlen (input_path) - 1] != '/')
     {
@@ -506,34 +537,35 @@ run_generator (const char* suite_root_in, const char* input_dir,
 
     if (bAddTetScenRecord)
     {
-        ftet_scen_path1 = alloc_mem_for_string (ftet_scen_path1, 
-            strlen (suite_root));
-        ftet_scen_path1 = str_append (ftet_scen_path1, suite_root);
+        ftet_scen_path1 = alloc_mem_for_string(ftet_scen_path1, 
+            strlen(suite_root));
+        ftet_scen_path1 = str_append(ftet_scen_path1, suite_root);
 
-        ftet_scen_path = concat_paths (ftet_scen_path1, "/tet_scen");
+        ftet_scen_path = concat_paths(ftet_scen_path1, "/tet_scen");
 
-        ftet_scen_exists = is_file_exists (ftet_scen_path);
-        ftet_scen = open_file (ftet_scen_path, "a+", NULL);
+        ftet_scen_exists = is_file_exists(ftet_scen_path);
+        ftet_scen = open_file(ftet_scen_path, "a+", NULL);
         if (!ftet_scen_exists)
         {
-            fprintf (ftet_scen, "all\n");
+            fprintf(ftet_scen, "all\n");
         }
 
-        ftet_scen_path2 = alloc_mem_for_string (ftet_scen_path2, 
-            strlen (scen_dir_in) + 1);
+        ftet_scen_path2 = alloc_mem_for_string(ftet_scen_path2, 
+            strlen(scen_dir_in) + 1);
 
         if (scen_dir_in[0] != '/')
         {
-            ftet_scen_path2 = str_append (ftet_scen_path2, "/");
+            ftet_scen_path2 = str_append(ftet_scen_path2, "/");
         }
-        ftet_scen_path2 = str_append (ftet_scen_path2, scen_dir_in);
+        ftet_scen_path2 = str_append(ftet_scen_path2, scen_dir_in);
 
 
-        func_scen_path = concat_paths (ftet_scen_path2, "/func_scen");
-
-        fprintf (ftet_scen, "\t:include:%s\n", func_scen_path);
-
-        fclose (ftet_scen);
+        func_scen_path = concat_paths(ftet_scen_path2, "/func_scen");
+        fprintf(ftet_scen, "\t:include:%s\n", func_scen_path);
+        fclose(ftet_scen);
+        
+        free(func_scen_path);
+        func_scen_path = NULL;
     }
 
     /* read directory names from input_dir directory */
@@ -592,6 +624,7 @@ run_generator (const char* suite_root_in, const char* input_dir,
     free (suite_root1);
     free (ftet_scen_path);
     free (ftet_scen_path1);
+    free (ftet_scen_path2);
     free (pDir);
     free (path1);
     free (scen_dir);
@@ -658,12 +691,15 @@ gen_tests_group (const char* suite_root, const char* output_dir,
         char* tpl_path2 = NULL;
         
         free (tpl_path);
-        tpl_path1 = alloc_mem_for_string (tpl_path1, strlen (t2c_root)); 
-        tpl_path1 = str_append (tpl_path1, t2c_root);
-        tpl_path2 = concat_paths (tpl_path1, 
+        tpl_path1 = alloc_mem_for_string(tpl_path1, strlen(t2c_root)); 
+        tpl_path1 = str_append(tpl_path1, t2c_root);
+        tpl_path2 = concat_paths(tpl_path1, 
                                   COMMON_TPL_DIR);
-        tpl_path = concat_paths (tpl_path2, COMMON_PURPOSE_TPL);
-        pFile = open_file (tpl_path, "r", NULL);
+        tpl_path = concat_paths(tpl_path2, COMMON_PURPOSE_TPL);
+        pFile = open_file(tpl_path, "r", NULL);
+        
+        free(tpl_path1);
+        free(tpl_path2);
     }
     purpose_tpl = read_file_to_string (pFile);
     free (tpl_path);
@@ -706,24 +742,12 @@ gen_tests_group (const char* suite_root, const char* output_dir,
         if ((strcmp (ep->d_name + strlen (ep->d_name) - strlen (INPUT_EXT), INPUT_EXT)) 
             || (ftest_nme == NULL)) 
         {
+            ep = readdir (pDir);
             if (ftest_nme)
             {
                 free (ftest_nme);
             }
-            
-            /* check if the file has the old-style file extension */ 
-            ftest_nme = get_substr (ep->d_name, 0, 
-                strstr (ep->d_name, INPUT_EXT_OLD) - (ep->d_name + 1));
-            if ((strcmp (ep->d_name + strlen (ep->d_name) - strlen (INPUT_EXT_OLD), INPUT_EXT_OLD)) 
-                || (ftest_nme == NULL)) 
-            {
-                ep = readdir (pDir);
-                if (ftest_nme)
-                {
-                    free (ftest_nme);
-                }
-                continue;
-            }
+            continue;
         }
         /* generate test string */
         input_path = str_sum (group_path, ep->d_name);
@@ -765,7 +789,7 @@ gen_tests_group (const char* suite_root, const char* output_dir,
         /* store test in the appropriate file */
 
         gen_makefile (suite_root, output_path, ftest_nme);
-        ftest_src = str_sum (ftest_nme, ".c");
+        ftest_src = str_sum (ftest_nme, (bGenCpp ? ".cpp" : ".c"));
         output_path = str_append (output_path, ftest_src);
         pFile = open_file (output_path, "w", NULL);
 
@@ -786,7 +810,6 @@ gen_tests_group (const char* suite_root, const char* output_dir,
 
     free (test_tpl);
     free (output_dir_path);
-    //free (makefile_dir_path);
     free (purpose_tpl);
     return NULL;
 }
@@ -857,11 +880,11 @@ gen_makefile (const char* suite_root, const char* dir_path, const char* ftest_nm
 
     fprintf (mf, "all: %s\n\n", ftest_nme);
 
-    fprintf (mf, "%s: %s.c\n", ftest_nme, ftest_nme);
+    fprintf (mf, "%s: %s.%s\n", ftest_nme, ftest_nme, (bGenCpp ? "cpp" : "c"));
     fprintf (mf, "\t$(CC) $(CFLAGS) -o %s $< $(LFLAGS) $(LIBS)\n", ftest_nme);
     fprintf (mf, "\tchmod a+x %s\n\n", ftest_nme);    
     
-    fprintf (mf, "debug: %s.c\n", ftest_nme);
+    fprintf (mf, "debug: %s.%s\n", ftest_nme, (bGenCpp ? "cpp" : "c"));
     fprintf (mf, "\t$(CC) $(DBG_CFLAGS) -o %s $< $(DBG_LFLAGS) $(DBG_LIBS)\n", ftest_nme);
     fprintf (mf, "\tchmod a+x %s\n\n", ftest_nme);
 
@@ -908,7 +931,7 @@ gen_test (const char* test_tpl, const char* purpose_tpl,
         &(common_tag_values[CLEANUP_POS]),
         &(common_tag_values[TEST_PURPOSES_POS]),
         &(common_tag_values[PCF_FUNCS_POS]));
-
+    
     if ((!bOK) || (test_nme == NULL)) 
     { 
         return (NULL);
@@ -922,6 +945,7 @@ gen_test (const char* test_tpl, const char* purpose_tpl,
     
     gen_tp_arrays(purposes_num, &common_tag_values[TET_HOOKS_POS], &common_tag_values[TP_FUNCS_POS]);
         
+   
     tsec = time(NULL);
     ltime = localtime(&tsec);
     if (ltime)
@@ -939,8 +963,24 @@ gen_test (const char* test_tpl, const char* purpose_tpl,
     replace_char(common_tag_values[LIBRARY_POS], '\r', ' ');
     replace_char(common_tag_values[LIBSECTION_POS], '\n', ' ');
     replace_char(common_tag_values[LIBSECTION_POS], '\r', ' ');
+
+    // Prepare the list of additional req catalogues
+    common_tag_values[RCAT_NAMES_POS] = strdup("");
+    {
+        const char* delims = " ,;\t";
+        char* token = NULL;
+        
+        token = strtok(hdr_param_value[PARAM_RCAT_POS], delims);
+        while (token)
+        {
+            common_tag_values[RCAT_NAMES_POS] = str_append(common_tag_values[RCAT_NAMES_POS], "    \"");
+            common_tag_values[RCAT_NAMES_POS] = str_append(common_tag_values[RCAT_NAMES_POS], token);
+            common_tag_values[RCAT_NAMES_POS] = str_append(common_tag_values[RCAT_NAMES_POS], "\",\n");
+            token = strtok(NULL, delims);
+        }
+    }   
     
-    /* do all sustitutions and deallocate memory allocated for tag_values [] */
+    /* do all substitutions and deallocate memory */
     for (i = 0; i < COMMON_TAGS_NUM; i++)
     {
         test = replace_all_substr_in_string(test, common_tags[i], 
@@ -948,8 +988,12 @@ gen_test (const char* test_tpl, const char* purpose_tpl,
         free(common_tag_values[i]);
     }
     
+    for (i = 0; i < HEADER_PARAMS_NUM; ++i)
+    {
+        free(hdr_param_value[i]);
+    }
+
     test = replace_all_substr_in_string(test, TAG_SUITE_SUBDIR_NAME, test_dir);
-    
     return test;
 }
 
@@ -961,7 +1005,10 @@ parse_header(const char* input_path)
     
     int size = 0;
     char* str = NULL;
-    char* str_t = NULL;
+    
+    char* tstr = NULL;  // temporary
+    char* str_t = NULL; // temporary
+    
     char* beg_ln = NULL;
     
     FILE* ft2c_file = NULL;
@@ -971,9 +1018,9 @@ parse_header(const char* input_path)
         return 0;
     }
     
-    ft2c_file = open_file (input_path, "r", NULL);
+    ft2c_file = open_file(input_path, "r", NULL);
     size = fsize(ft2c_file);
-    str = alloc_mem_for_string (str, size + 1);
+    str = alloc_mem_for_string(str, size + 1);
     
     for (i = 0; i < HEADER_PARAMS_NUM; ++i)
     {
@@ -982,18 +1029,26 @@ parse_header(const char* input_path)
     
     do
     {
-        fgets (str, size, ft2c_file);
+        fgets(str, size, ft2c_file);
+        tstr = trim_with_nl(str);
        
         for (i = 0; i < HEADER_PARAMS_NUM; ++i)
-        {
-            beg_ln = strstr (str, hdr_param_name[i]);
-            if (beg_ln)
+        {   
+            if (tstr[0] == '#')
             {
-                beg_ln = beg_ln + strlen(hdr_param_name[i]);
-                str_t = trim_with_nl (beg_ln);
-                hdr_param_value[i] = strdup (str_t);
-
-                break;
+                beg_ln = strstr(tstr + 1, hdr_param_name[i]);
+                if (beg_ln == tstr + 1)
+                {
+                    beg_ln = beg_ln + strlen(hdr_param_name[i]);
+                    if ((beg_ln[0] == ' ') || (beg_ln[0] == '\t'))
+                    {
+                        str_t = trim_with_nl(beg_ln);
+                        
+                        free(hdr_param_value[i]);
+                        hdr_param_value[i] = strdup(str_t);
+                    }
+                    break;
+                }
             }
         } /*end for*/
         
@@ -1002,8 +1057,8 @@ parse_header(const char* input_path)
             break;
         }
     }
-    while (str[0] == '#');
-
+    while ((tstr[0] == 0) || (tstr[0] == '#'));
+    
     free (str);
     fclose (ft2c_file);
     return 1;
@@ -1126,6 +1181,7 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
             break;
         case ITOP_GLOBAL:
             /* found GLOBAL */
+            free(text);
             text = parse_global(fl, size);
             if (text == NULL) 
             {
@@ -1133,12 +1189,14 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
                 fprintf (stderr, "Invalid global block in %s\n", input_path);
                 break;
             }
-
-            *pstrGlobals = text;
             
+            free(*pstrGlobals);
+            *pstrGlobals = strdup(text);
+           
             break;
         case ITOP_STARTUP:
             /* found STARTUP */
+            free(text);
             text = parse_startup(fl, size);
             if (text == NULL) 
             {
@@ -1146,12 +1204,14 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
                 fprintf (stderr, "Invalid startup block in %s\n", input_path);
                 break;
             }
-
-            *pstrStartup = text;
+            
+            free(*pstrStartup);
+            *pstrStartup = strdup(text);
             
             break;
         case ITOP_CLEANUP:
             /* found CLEANUP */
+            free(text);
             text = parse_cleanup(fl, size);
             if (text == NULL) 
             {
@@ -1159,8 +1219,9 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
                 fprintf (stderr, "Invalid cleanup block in %s\n", input_path);
                 break;
             }
-
-            *pstrCleanup = text;
+            
+            free(*pstrCleanup);
+            *pstrCleanup = strdup(text);
             
             break;
         case ITOP_BLOCK:
@@ -1182,6 +1243,7 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
                 pcf_name = strdup("NULL");
             }
             
+            free(text);
             text = parse_block(fl, size, purpose_tpl, purposes_number, pcf_funcs, pcf_name);
             free(pcf_name);
             
@@ -1209,8 +1271,9 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
     }
     while (!feof(fl) && !ferror(fl));
 
-    free (str);
-    fclose (fl);
+    free(str);
+    fclose(fl);
+    free(text);
     
     int i;
     for (i = 0; i < sizeof(bl_attr_val)/sizeof(bl_attr_val[0]) - 1; ++i)
@@ -1390,25 +1453,30 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
     {
         return NULL;
     }
-
+    
+    for (i = 0; i < MAX_TARGETS_NUM; ++i)
+    {
+        targets[i] = NULL;
+    }
+    
     for (i = 0; i < TAGS_NUM; ++i)
     {
         tag_values[i] = NULL;
     }
-    tag_values[PURPNUM_TAG_POS] = strdup ("<%purpose_number%>"); /* to be replaced with itself */
-    tag_values[COMMENT_TAG_POS] = strdup ("// Target interfaces:\n");
-    tag_values[TARGETS_TAG_POS] = strdup ("Target interface(s):\\n");
+    tag_values[PURPNUM_TAG_POS] = strdup("<%purpose_number%>"); /* to be replaced with itself */
+    tag_values[COMMENT_TAG_POS] = strdup("// Target interfaces:\n");
+    tag_values[TARGETS_TAG_POS] = strdup("Target interface(s):\\n");
     
-    text = strdup ("");
-    finally_code = strdup ("");
-    str = alloc_mem_for_string (str, size + 1);
+    text = strdup("");
+    finally_code = strdup("");
+    str = alloc_mem_for_string(str, size + 1);
 
     char * comment = NULL;
     char* purp = NULL;
 
     do
     {
-        fgets_and_skip_comments (str, size, fl, &ln_count);
+        fgets_and_skip_comments(str, size, fl, &ln_count);
         
         if (t2c_parse_close_tag(str, top_tag[ITOP_BLOCK]))
         {
@@ -1587,7 +1655,7 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
             *pcf_funcs = str_append(*pcf_funcs, pcf_name);
             *pcf_funcs = str_append(*pcf_funcs, ",\n");
             
-            purp = parse_purpose (fl, size, templ, finally_code, purposes_number);
+            purp = parse_purpose(fl, size, templ, finally_code, purposes_number);
             if (purp == NULL)
             {
                 isBad = 1;
@@ -1595,8 +1663,8 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
                 break;
             }
 
-            text = str_append (text, purp);
-            free (purp);
+            text = str_append(text, purp);
+            free(purp);
             
             break;
         default:
@@ -1617,17 +1685,22 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
         isBad = 1;
     }
 
-    free (str);
-    free (templ);
-    free (finally_code);
+    free(str);
+    free(templ);
+    free(finally_code);
     for (i = 0; i < TAGS_NUM; ++i)
     {
         free(tag_values[i]);
     }
-
+    
+    for (i = 0; i < nTargets; ++i)
+    {
+        free(targets[i]);
+    }
+    
     if (isBad)
     {
-        free (text);
+        free(text);
     }
     
     return ((isBad) ? NULL : text);
@@ -1693,7 +1766,6 @@ parse_defines(FILE* fl, int size, char** pstrDefines, char** pstrUndefs)
     int ln_count = 0;
     char* str = NULL;
     char* str_t = NULL;
-    char* text = NULL;
     int isBad = 0;
 
     if (!fl)
@@ -1706,14 +1778,13 @@ parse_defines(FILE* fl, int size, char** pstrDefines, char** pstrUndefs)
         return 0;
     }
 
-    text = strdup ("");
-    *pstrDefines = strdup ("");
-    *pstrUndefs = strdup ("");
-    str = alloc_mem_for_string (str, size + 1);
+    *pstrDefines = strdup("");
+    *pstrUndefs = strdup("");
+    str = alloc_mem_for_string(str, size + 1);
 
     do
     {
-        fgets_and_skip_comments (str, size, fl, &ln_count);
+        fgets_and_skip_comments(str, size, fl, &ln_count);
         if (t2c_parse_close_tag(str, bl_tag[IBL_DEFINE]))
         {
             break;
@@ -1847,13 +1918,16 @@ parse_purpose(FILE* fl, int size, const char* templ, const char* finally_code, i
     char* str_t = NULL;
     int isBad = 0;
     char* text = NULL;
-
+    char* toComment = NULL;
     int i = 0;
 
     char* params[MAX_PARAMS_NUM];    
     int nParams = 0;                
 
-    char* toComment = NULL;
+    for (i = 0; i < MAX_PARAMS_NUM; ++i)
+    {
+        params[i] = NULL;
+    }
 
     if (!fl)
     {
@@ -1880,6 +1954,7 @@ parse_purpose(FILE* fl, int size, const char* templ, const char* finally_code, i
             char strTmp[16] = "";
 
             /* fill in the gaps in the template */
+            free(text);
             text = strdup(templ);
             if (nParams == 0)
             {
@@ -1929,6 +2004,12 @@ parse_purpose(FILE* fl, int size, const char* templ, const char* finally_code, i
 
     free(str);
     free(toComment);
+    
+    for (i = 0; i < nParams; ++i)
+    {
+        free(params[i]);
+    }
+    
     if (isBad)
     {
         free(text);
@@ -2021,9 +2102,11 @@ gen_common_makefile (const char* suite_root_path, const char* output_dir_path)
     fprintf(mf, "ADD_CFLAGS = %s $(CC_SPECIAL_FLAGS)\n", cfg_parm_values[CFG_COMP_FLAGS_POS]); 
     fprintf(mf, "ADD_LFLAGS = %s\n\n", cfg_parm_values[CFG_LINK_FLAGS_POS]); 
 
-    fprintf(mf, "COMMON_CFLAGS = -D\"_POSIX_C_SOURCE=200112L\" -std=c99 -I$(T2C_INC_DIR) -I$(SUITE_INC_DIR) $(ADD_CFLAGS)\n");
+    fprintf(mf, "COMMON_CFLAGS =%s -I$(T2C_INC_DIR) -I$(SUITE_INC_DIR) $(ADD_CFLAGS)\n",
+        (bGenCpp ? " " : " -D\"_POSIX_C_SOURCE=200112L\" -std=c99"));
         
-    fprintf(mf, "CFLAGS = -O2 $(COMMON_CFLAGS) -I$(TET_INC_DIR)\n");
+    fprintf(mf, "CFLAGS = -O2 $(COMMON_CFLAGS) -I$(TET_INC_DIR) %s\n",
+        (bSingleProcess ? "-DT2C_SINGLE_PROCESS" : ""));
     fprintf(mf, "DBG_CFLAGS = -g -DT2C_DEBUG $(COMMON_CFLAGS) -I$(DBG_INC_DIR)\n\n");
     
     fprintf(mf, "LFLAGS = $(ADD_LFLAGS)\n");
@@ -2083,14 +2166,16 @@ set_defaults ()
     int i;
     for (i = 0; i < CFG_PARAMS; ++i)
     {
-        free (cfg_parm_values[i]);
+        free(cfg_parm_values[i]);
     }
     
-    cfg_parm_values[CFG_COMPILER_POS] = (char *)strdup ("gcc");
-    cfg_parm_values[CFG_COMP_FLAGS_POS] = (char *)strdup ("");
-    cfg_parm_values[CFG_LINK_FLAGS_POS] = (char *)strdup ("");
-    cfg_parm_values[CFG_TET_RECORD_POS] = (char *)strdup ("yes");
-    cfg_parm_values[CFG_WAIT_TIME_POS] = (char *)strdup ("30");
+    cfg_parm_values[CFG_COMPILER_POS]   = (char *)strdup("gcc");
+    cfg_parm_values[CFG_COMP_FLAGS_POS] = (char *)strdup("");
+    cfg_parm_values[CFG_LINK_FLAGS_POS] = (char *)strdup("");
+    cfg_parm_values[CFG_TET_RECORD_POS] = (char *)strdup("yes");
+    cfg_parm_values[CFG_WAIT_TIME_POS]  = (char *)strdup("30");
+    cfg_parm_values[CFG_LANGUAGE_POS]   = (char *)strdup("C");
+    cfg_parm_values[CFG_SINGLE_POS]     = (char *)strdup("no");
 }
 
 static void
@@ -2127,7 +2212,7 @@ load_config(const char* fpath)
         }
 
         if (strcmp(cfg_parm_values[CFG_TET_RECORD_POS], "yes") &&
-            strcmp(cfg_parm_values[CFG_TET_RECORD_POS], "YES")) /* value is not "yes" */
+            strcmp(cfg_parm_values[CFG_TET_RECORD_POS], "YES")) // value is not "yes"
         {
             bAddTetScenRecord = 0;
         }
@@ -2136,6 +2221,18 @@ load_config(const char* fpath)
         if (waittime == 0)
         {
             sprintf(cfg_parm_values[CFG_WAIT_TIME_POS], "0");
+        }
+        
+        if (!strcmp(cfg_parm_values[CFG_LANGUAGE_POS], "cpp") ||
+            !strcmp(cfg_parm_values[CFG_LANGUAGE_POS], "CPP"))
+        {
+            bGenCpp = 1;
+        }
+        
+        if (!strcmp(cfg_parm_values[CFG_SINGLE_POS], "yes") ||
+            !strcmp(cfg_parm_values[CFG_SINGLE_POS], "YES")) // value is "yes"
+        {
+            bSingleProcess = 1;
         }
         
         fclose (fd);
@@ -2180,6 +2277,7 @@ load_parameter(const char* line)
         {
             if (!strcmp(str_name, cfg_parm_names[i]))
             {
+                free(cfg_parm_values[i]);
                 cfg_parm_values[i] = (char*)strdup(str_value);
                 break;
             }

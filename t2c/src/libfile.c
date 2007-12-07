@@ -94,11 +94,11 @@ create_dir (char *dirname)
  * Print an error message and exit with the exit code specified
  */
 void 
-error_with_exit_code (int code,const char* template, ...)
+error_with_exit_code (int code,const char* tpl, ...)
 {
     va_list ap;
-    va_start (ap,template);
-    vfprintf(stderr,template,ap);
+    va_start (ap,tpl);
+    vfprintf(stderr,tpl,ap);
     va_end (ap);
     fprintf(stderr,"\n");
     exit(code);

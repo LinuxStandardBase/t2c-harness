@@ -37,8 +37,8 @@
 // T2C_SUITE_ROOT is main test suite directory, the one where the tet execution 
 // configuration file (tetexec.cfg) resides as well as tet_code file etc.
 // 
-// 2. The standalone version of the tests will be built with lsbcc, so make sure 
-// that lsbcc is somewhere in your PATH (it is usually found in /opt/lsb/bin). 
+// 2. If the standalone version of the tests is to be built with lsbcc or lsbc++,  
+// make sure that lsbcc (or lsbc++, respectively) is somewhere in your PATH. 
 // You should also add a path to the LSB pkg-config data 
 // (usually /opt/lsb/lib/pkgconfig or /opt/lsb/lib64/pkgconfig) to the beginning of 
 // the string contained in PKG_CONFIG_PATH environment variable.
@@ -51,7 +51,7 @@
 //  $T2C_SUITE_ROOT/<%suite_subdir%>/tests/<%object_name%>/<%object_name%>.c
 //  $T2C_SUITE_ROOT/<%suite_subdir%>/tests/<%object_name%>/Makefile
 // 
-// If some of these are missing, just run ./build_all.sh script from the $T2C_SUITE_ROOT 
+// If some of these are missing, just run ./gen_code.sh script from the $T2C_SUITE_ROOT 
 // directory. After that all necessary files and directories should exist.
 //
 // 4. Execute the following commands:
@@ -80,7 +80,7 @@
 
 #include <t2c.h>
 
-#ifdef T2C_DEBUG
+#if defined(T2C_DEBUG) || defined(T2C_SINGLE_PROCESS)
 #define t2c_fork_impl t2c_fork_dbg
 #else
 #define t2c_fork_impl t2c_fork
@@ -95,6 +95,12 @@ int bVerbose = FALSE;
 
 const char* test_name_      = "<%object_name%>";
 const char* suite_subdir_   = "<%suite_subdir%>";
+
+// List of requirement catalogues to be loaded
+const char* rcat_names_[] = {
+    "<%object_name%>",
+<%rcat_names%>    NULL
+};
 
 const char* rel_href_path_  = 
     "<%suite_subdir%>/tests/<%object_name%>/<%object_name%>.html#%s%d\">";
@@ -221,12 +227,16 @@ startup_func()
         bVerbose = TRUE;
     }
     
-    // Get a path to the REQ catalogue.
-    char* rcat_path_ = t2c_get_rcat_path(suite_subdir_, test_name_);
-    int bOK = t2c_rcat_load(rcat_path_, &head_, &reqs_, &nreq_);
-    free(rcat_path_);
+    // Load requirement catalogues.
+    int bOK = t2c_rcat_load(rcat_names_, suite_subdir_, &head_, &reqs_, &nreq_);
 
-    //----------------    
+#ifndef T2C_IGNORE_RCAT_ERRORS
+    if (!bOK)
+    {
+        INIT_FAILED("<%object_name%>: unable to load req catalogue.");
+    }
+#endif    
+    
     char* href_root = t2c_get_suite_root();
     char* beg = "{noreplace}<a href=\"";
     char* stmp = NULL;
@@ -238,15 +248,7 @@ startup_func()
     
     free(href_root);
     free(stmp);
-    //----------------  
- 
-#ifndef T2C_IGNORE_RCAT_ERRORS
-    if (!bOK)
-    {
-        INIT_FAILED("<%object_name%>: unable to load req catalogue.");
-    }
-#endif
-    
+
     // Sort the catalogue by ID. (No-op if reqs == NULL.)
     t2c_rcat_sort(reqs_, nreq_);
     
