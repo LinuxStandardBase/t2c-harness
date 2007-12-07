@@ -1,6 +1,8 @@
 #!/bin/sh
 
-T2C_SUITE_ROOT=`pwd`
+# Get the directory where this script resides.
+WORK_DIR=$(cd `dirname $0` && pwd) 
+T2C_SUITE_ROOT=${WORK_DIR}
 export T2C_SUITE_ROOT
 
 # Remove special compiler flag list

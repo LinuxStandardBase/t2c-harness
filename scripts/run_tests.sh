@@ -2,8 +2,12 @@
 
 # T2C_ROOT is not necessary to run the tests
 
-T2C_SUITE_ROOT=`pwd`
+# Get the directory where this script resides.
+WORK_DIR=$(cd `dirname $0` && pwd) 
+T2C_SUITE_ROOT=${WORK_DIR}
 export T2C_SUITE_ROOT
+
+cd ${T2C_SUITE_ROOT}
 
 if [ -z ${TET_ROOT} ]
 then

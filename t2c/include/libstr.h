@@ -1,6 +1,10 @@
 #ifndef LIBSTR_H
 #define LIBSTR_H
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif 
 
 extern char* trim (char* str);
 extern char* trim_with_nl (char* str);
@@ -14,5 +18,8 @@ extern char* do_indent (char* source, int spaces_num);
 extern char* convert_to_comment (const char* str);
 extern char* mark_symbol (int n);
 
-
+#ifdef	__cplusplus
+}
+#endif
+    
 #endif /* LIBSTR_H */

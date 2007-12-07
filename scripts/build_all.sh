@@ -3,13 +3,16 @@
 if [ -z ${T2C_ROOT} ]
 then
         echo "Error: T2C_ROOT is not defined."
-		echo "The environment variable T2C_ROOT should contain a path"
-		echo "to the main directory of T2C Framework (usually /opt/lsb/test/t2c-framework/)."
+		echo "The environment variable T2C_ROOT should contain a path to the main directory of T2C Framework."
 		exit 1
 fi
 
-T2C_SUITE_ROOT=`pwd`
+# Get the directory where this script resides.
+WORK_DIR=$(cd `dirname $0` && pwd) 
+T2C_SUITE_ROOT=${WORK_DIR}
 export T2C_SUITE_ROOT
+
+cd ${T2C_SUITE_ROOT}
 
 if [ -z ${TET_ROOT} ]
 then
@@ -91,7 +94,19 @@ do
         echo   "----------------------"
         printf "Building $TEST_SUITE\n"
 
-        # Generate & build tests for ${TEST_SUITE}
+        # Generate & build tests and test data for ${TEST_SUITE}
+        cd ${T2C_SUITE_ROOT}
+        if [ -d ${TEST_SUITE}/testdata/testdata_src ]
+        then
+            cd ${T2C_SUITE_ROOT}/${TEST_SUITE}/testdata/testdata_src
+            make
+            if [ $? -ne 0 ]
+            then
+                printf "Failed to build test data, aborting...\n"
+                exit 1
+            fi
+        fi
+
         cd ${T2C_SUITE_ROOT}/${TEST_SUITE}
         chmod a+x gen_tests clean
         ./gen_tests
@@ -108,19 +123,6 @@ do
         then
             printf "Failed to build tests for ${TEST_SUITE}, aborting...\n"
             exit 1
-        fi
-
-        # Temporary here: build test data for ${TEST_SUITE}
-        cd ${T2C_SUITE_ROOT}
-        if [ -d ${TEST_SUITE}/testdata/testdata_src ]
-        then
-            cd ${T2C_SUITE_ROOT}/${TEST_SUITE}/testdata/testdata_src
-            make
-            if [ $? -ne 0 ]
-            then
-                printf "Failed to build test data, aborting...\n"
-                exit 1
-            fi
         fi
 
         cd ${T2C_SUITE_ROOT}

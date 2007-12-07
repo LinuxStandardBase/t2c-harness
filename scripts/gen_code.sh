@@ -6,13 +6,16 @@
 if [ -z ${T2C_ROOT} ]
 then
         echo "Error: T2C_ROOT is not defined."
-		echo "The environment variable T2C_ROOT should contain a path"
-		echo "to the main directory of T2C Framework (usually /opt/lsb/test/t2c-framework/)."
+		echo "The environment variable T2C_ROOT should contain a path to the main directory of T2C Framework."
 		exit 1
 fi
 
-T2C_SUITE_ROOT=`pwd`
+# Get the directory where this script resides.
+WORK_DIR=$(cd `dirname $0` && pwd) 
+T2C_SUITE_ROOT=${WORK_DIR}
 export T2C_SUITE_ROOT
+
+cd ${T2C_SUITE_ROOT}
 
 if [ -z ${TET_ROOT} ]
 then

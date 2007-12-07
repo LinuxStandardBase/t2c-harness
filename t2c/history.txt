@@ -1,3 +1,17 @@
+30.11.2007 v.1.0 beta
+In this version:
+
+- Added support for loading multiple requirement catalogues in a T2C file.
+- Fixed some bugs including memory leaks.
+- T2C can now generate C++-compliant code as well as plain C. File extension and 
+compiler flags in the makefiles are set accordingly. 
+Add line "LANGUAGE=CPP" to .cfg-file to specify C++ as the output language.
+- Added "SINGLE_PROCESS" option in the config file. If its value is "YES" or "yes",
+the tests will be executed in a single process even in default, not standalone, 
+mode. Startup and cleanup functions are executed in this process too.
+
+-------------------------------------------------------------------------------
+
 14.11.2007 v.0.9
 In this version:
 
