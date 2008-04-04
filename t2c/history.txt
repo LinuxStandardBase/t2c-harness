@@ -1,3 +1,24 @@
+dd.mm.2008 v.1.x.y
+In this version:
+
+- Fixed: g++ 4.3 issued warnings concerning deprecated string to char* conversion 
+when TET functions were used.
+- Fixed: a problem of invalid messages written to the journal for uninitiated tests. 
+The "reason" string passed to tet_delete() should remain unchanged until tet_cleanup()
+is called, because TET does not copy it, it just stores a pointer to this string.
+
+-------------------------------------------------------------------------------
+
+11.02.2008 v.1.1
+In this version:
+
+- Added support for custom makefile templates for test suites as well as 
+for individual tests.
+- Added html version of T2C Code Generator reference (in English). Plan text
+documentation and the documentation in Russian is no longer supported.
+
+-------------------------------------------------------------------------------
+
 30.11.2007 v.1.0 beta
 In this version:
 

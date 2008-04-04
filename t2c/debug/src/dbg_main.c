@@ -296,6 +296,13 @@ tet_printf(char* format, ...)
     return 0;
 }
 
+int 
+tet_vprintf(char* format, va_list ap)
+{
+    // Does nothing.
+    return 0;
+}
+
 void 
 tet_setcontext()
 {

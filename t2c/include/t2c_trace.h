@@ -5,7 +5,7 @@
 // 'bVerbose' variable should be available at the point where these macros
 // are used.
 #define TRACE(str, ...) {                   \
-    tet_printf(str, __VA_ARGS__);           \
+    t2c_printf(str, __VA_ARGS__);       \
     if(bVerbose) {                          \
         fprintf(stderr, str, __VA_ARGS__);  \
         fprintf(stderr, "\n");              \

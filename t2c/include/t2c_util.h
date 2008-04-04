@@ -21,6 +21,9 @@
 extern "C"
 {
 #endif 
+
+// A replacement for tet_printf that takes 'const char*' instead of 'char*'
+int t2c_printf(const char* format, ...);
     
 // Returns path to the main T2C directory (actually, the contents of 
 // T2C_ROOT environment variable). If the variable is not defined, "/" is returned.
