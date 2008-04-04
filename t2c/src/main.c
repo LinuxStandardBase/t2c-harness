@@ -52,7 +52,8 @@ Example:
 
 #define PATH_LEN 1024       // Maximum path length allowed
 
-#define INPUT_EXT          ".t2c"        // input file extention
+#define INPUT_EXT          ".t2c"       // input file extention
+#define MAKEFILE_TPL_EXT   ".tmk"       // extension of template makefiles
 
 /************************************************************************/
 // Known top-level tags.
@@ -95,6 +96,7 @@ static char* bl_tag[] = {
 #define CFG_WAIT_TIME_POS   4
 #define CFG_LANGUAGE_POS    5
 #define CFG_SINGLE_POS      6
+#define CFG_MK_TPL_POS      7
 
 // Number of parameters that can be specified in a .cfg-file.
 #define CFG_PARAMS (sizeof(cfg_parm_names)/sizeof(cfg_parm_names[0]))        
@@ -106,19 +108,22 @@ static char* cfg_parm_names[] = {
     "LINKER_FLAGS",
     "TET_SCEN_RECORD",
     
-    "WAIT_TIME",     // Maximum time for a test to run (in seconds). Default: "30"
+    "WAIT_TIME",        // Maximum time for a test to run (in seconds). Default: "30"
     
-    "LANGUAGE",      // "CPP" for C++-code, any other value for plain C. Default: "C"
+    "LANGUAGE",         // "CPP" for C++-code, any other value for plain C. Default: "C"
     
-    "SINGLE_PROCESS" // If "YES" or "yes", all tests are executed in the same process, 
-                     // otherwise - in separate process each. Ignored in standalone (debug) mode.
-                     // Default: "no".
+    "SINGLE_PROCESS",   // If "YES" or "yes", all tests are executed in the same process, 
+                        // otherwise - in separate process each. Ignored in standalone (debug) mode.
+                        // Default: "no".
+    
+    "MAKEFILE_TEMPLATE" // Template makefile for the tests in the subsuite. Default: ""
 };
 
 /* Values of the parameters from .cfg-file. Use set_defaults() to reset these to their
  * default values.
  */
 static char* cfg_parm_values[CFG_PARAMS] = {
+    NULL,
     NULL,
     NULL,
     NULL,
@@ -141,9 +146,10 @@ int bGenCpp = 0;
 int bSingleProcess = 0;
 
 /************************************************************************/
-#define COMMON_TEST_TPL    "test.tpl"    /* common test case template*/
-#define COMMON_PURPOSE_TPL "purpose.tpl" /* common test purpose template*/
-#define COMMON_TPL_DIR     "/t2c/src/templates/"
+#define COMMON_TEST_TPL      "test.tpl"    /* common test case template*/
+#define COMMON_PURPOSE_TPL   "purpose.tpl" /* common test purpose template*/
+#define DEFAULT_MAKEFILE_TPL "default.tmk"
+#define COMMON_TPL_DIR       "t2c/src/templates/"
 
 #define COMMON_TAGS_NUM     (sizeof(common_tags)/sizeof(common_tags[0]))
 #define GROUP_NAME_POS      0
@@ -202,17 +208,34 @@ static char* tags[] = {
 
 #define TAG_FINALLY_NAME "<%finally%>"
 #define TAG_SUITE_SUBDIR_NAME "<%suite_subdir%>"
+    
+// Placeholders for makefile parameters
+static char* mk_params[] = {
+    "<%test_name%>",
+    "<%test_dir_path%>",
+    "<%test_suite_root%>",
+    "<%test_tmp_basename%>"
+};
+// Positions of makefile parameter placeholders in mk_params[]
+#define MK_PARAM_NUM    (sizeof(mk_params)/sizeof(mk_params[0]))
+#define MK_NAME_POS         0
+#define MK_DIR_PATH_POS     1
+#define MK_SUITE_ROOT_POS   2
+#define MK_TMP_BASENAME_POS 3
 
+// func_scen
 char* func_tests_scenario_file_name = "func_scen";
 
-/* Number of params to be extracted from the header of a .t2c-file  */
+// Number of params to be extracted from the header of a .t2c-file
 #define HEADER_PARAMS_NUM    (sizeof(hdr_param_name)/sizeof(hdr_param_name[0]))     
 #define PARAM_LIB_POS        0
 #define PARAM_SECTION_POS    1
 #define PARAM_RCAT_POS       2
+#define PARAM_T2C_BASENAME_POS   3
 
 char* hdr_param_value[] = { 
     NULL, 
+    NULL,
     NULL,
     NULL
 };
@@ -220,7 +243,8 @@ char* hdr_param_value[] = {
 char* hdr_param_name[] = { 
     "library", 
     "libsection",
-    "additional_req_catalogues"
+    "additional_req_catalogues",
+    "t2c_basename"
 };
 
 // The values of $T2C_ROOT and $T2C_SUITE_ROOT.
@@ -230,6 +254,12 @@ char* t2c_suite_root = NULL;
 // A path (relative to $T2C_SUITE_ROOT) to the test suite subdirectory 
 // (e.g. "desktop-t2c/glib-t2c")
 char* test_dir = NULL;
+
+// Default makefile template
+char* def_mk_tpl = NULL;
+
+// Makefile template for a subsuite
+char* subsuite_mk_tpl = NULL;
 
 /***********************************************************************/
 
@@ -253,7 +283,7 @@ add_test_in_scen(const char* suite_root, const char* scen_file,
 
 static void 
 gen_makefile(const char* suite_root, const char* dir_path, 
-             const char* ftest_nme);
+             const char* ftest_nme,  const char* makefile_tpl);
 
 static void 
 gen_common_makefile(const char* suite_root_path, const char* output_dir_path);
@@ -422,11 +452,24 @@ main (int argc, char* argv[])
     char* out_dir  = concat_paths(test_dir, out_dir_end);
     char* scen_dir = concat_paths(test_dir, scen_dir_end);
     
+    if ((cfg_parm_values[CFG_MK_TPL_POS] != NULL) && 
+        (strlen(cfg_parm_values[CFG_MK_TPL_POS]) != 0))
+    {
+        char* tmp_path = concat_paths(test_dir, cfg_parm_values[CFG_MK_TPL_POS]);
+        free(cfg_parm_values[CFG_MK_TPL_POS]);
+        cfg_parm_values[CFG_MK_TPL_POS] = tmp_path;
+
+        printf("Makefile template for this test suite: $T2C_SUITE_ROOT/%s\n", 
+            cfg_parm_values[CFG_MK_TPL_POS]);
+    }
+    
     run_generator(argv[1], src_dir, out_dir, scen_dir);
     
     free(src_dir);
     free(out_dir);
     free(scen_dir);
+    free(def_mk_tpl);
+    free(subsuite_mk_tpl);
 
     for (i = 0; i < CFG_PARAMS; ++i)
     {
@@ -567,8 +610,59 @@ run_generator (const char* suite_root_in, const char* input_dir,
         free(func_scen_path);
         func_scen_path = NULL;
     }
+    
+    // load the default makefile template
+    FILE *ftmk = NULL;
+    char* tmk_path  = NULL;
+    char* tpl_path1 = NULL;
+    char* tpl_path2 = NULL;
 
-    /* read directory names from input_dir directory */
+    tpl_path1 = alloc_mem_for_string(tpl_path1, strlen(t2c_root)); 
+    tpl_path1 = str_append(tpl_path1, t2c_root);
+    tpl_path2 = concat_paths(tpl_path1, 
+                             COMMON_TPL_DIR);
+    tmk_path = concat_paths(tpl_path2, DEFAULT_MAKEFILE_TPL);
+    
+    ftmk = open_file(tmk_path, "r", NULL);
+    if (ftmk != NULL)
+    {
+        def_mk_tpl = read_file_to_string(ftmk);
+        fclose(ftmk);
+    }
+    
+    free(tpl_path1);
+    free(tpl_path2);
+    free(tmk_path);
+    
+    if (def_mk_tpl == NULL)
+    {
+        fprintf(stderr, "Unable to read default makefile template.\n");
+        def_mk_tpl = strdup("");
+    }
+    
+    // load custom makefile template for this test suite (if specified)
+    if ((cfg_parm_values[CFG_MK_TPL_POS] != NULL) && 
+        (strlen(cfg_parm_values[CFG_MK_TPL_POS]) != 0))
+    {
+        FILE* fsmk = NULL;
+        char* tmp = NULL;
+        char* smk_path = NULL;
+        
+        tmp = concat_paths(suite_root, cfg_parm_values[CFG_MK_TPL_POS]);
+        smk_path = (char*)shorten_path(tmp);
+        free(tmp);
+        
+        fsmk = open_file(smk_path, "r", NULL);
+        if (fsmk != NULL)
+        {
+            subsuite_mk_tpl = read_file_to_string(fsmk);
+            fclose(fsmk);
+        }
+       
+        free(smk_path);
+    }
+    
+    // read directory names from input_dir directory 
     pDir = opendir (input_path);
     if (pDir == NULL)
     {
@@ -665,19 +759,19 @@ gen_tests_group (const char* suite_root, const char* output_dir,
         char* tpl_path2 = NULL;
 
         free (tpl_path);
-        tpl_path1 = alloc_mem_for_string (tpl_path1, strlen(t2c_root)); 
-        tpl_path1 = str_append (tpl_path1, t2c_root);
-        tpl_path2 = concat_paths (tpl_path1, 
-                                  COMMON_TPL_DIR);
-        tpl_path = concat_paths (tpl_path2, COMMON_TEST_TPL);
+        tpl_path1 = alloc_mem_for_string(tpl_path1, strlen(t2c_root)); 
+        tpl_path1 = str_append(tpl_path1, t2c_root);
+        tpl_path2 = concat_paths(tpl_path1, 
+                                 COMMON_TPL_DIR);
+        tpl_path = concat_paths(tpl_path2, COMMON_TEST_TPL);
         
-        pFile = open_file (tpl_path, "r", NULL);
+        pFile = open_file(tpl_path, "r", NULL);
 
-        free (tpl_path1);
-        free (tpl_path2);
+        free(tpl_path1);
+        free(tpl_path2);
     }
-    free (tpl_path);
-    test_tpl = read_file_to_string (pFile);
+    free(tpl_path);
+    test_tpl = read_file_to_string(pFile);
     fclose (pFile);
     
     /* common purpose template */
@@ -736,7 +830,8 @@ gen_tests_group (const char* suite_root, const char* output_dir,
         char* input_path = NULL;
         char* output_path = NULL;
         int bOK = 1;
-
+        char* makefile_tpl = NULL;
+        
         ftest_nme = get_substr (ep->d_name, 0, 
                                 strstr (ep->d_name, INPUT_EXT) - (ep->d_name + 1));
         if ((strcmp (ep->d_name + strlen (ep->d_name) - strlen (INPUT_EXT), INPUT_EXT)) 
@@ -747,10 +842,31 @@ gen_tests_group (const char* suite_root, const char* output_dir,
             {
                 free (ftest_nme);
             }
+            free(makefile_tpl);
             continue;
         }
         /* generate test string */
-        input_path = str_sum (group_path, ep->d_name);
+        input_path = str_sum(group_path, ep->d_name);
+        
+        char* tpl_mk_path = str_sum(group_path, ftest_nme);
+        tpl_mk_path = str_append(tpl_mk_path, MAKEFILE_TPL_EXT);
+        
+        if (is_file_exists(tpl_mk_path))
+        {   // template makefile exists, so we use it
+            FILE* fd = open_file(tpl_mk_path, "r", NULL);
+            makefile_tpl = read_file_to_string(fd);
+            fclose(fd);
+        }
+        else if (subsuite_mk_tpl != NULL)
+        {
+            makefile_tpl = strdup(subsuite_mk_tpl);
+        }
+        else
+        {   // template makefiles do not exist, so we use the default one
+            makefile_tpl = strdup(def_mk_tpl);
+        }
+        
+        free(tpl_mk_path);
         
         /* parse header of the .t2c-file here */
         bOK = parse_header(input_path);
@@ -760,6 +876,7 @@ gen_tests_group (const char* suite_root, const char* output_dir,
             fprintf (stderr, "warning: invalid header in %s\n", input_path);
             free (input_path);
             free (ftest_nme);
+            free(makefile_tpl);
             continue;
         }
         
@@ -771,6 +888,7 @@ gen_tests_group (const char* suite_root, const char* output_dir,
             fprintf (stderr, "warning: test generator is unable to generate test for %s\n", input_path);
             free (input_path);
             free (ftest_nme);
+            free(makefile_tpl);
             continue;
         }
 
@@ -786,9 +904,7 @@ gen_tests_group (const char* suite_root, const char* output_dir,
             create_dir (output_path);        
         }
 
-        /* store test in the appropriate file */
-
-        gen_makefile (suite_root, output_path, ftest_nme);
+        gen_makefile(suite_root, output_path, ftest_nme, makefile_tpl);
         ftest_src = str_sum (ftest_nme, (bGenCpp ? ".cpp" : ".c"));
         output_path = str_append (output_path, ftest_src);
         pFile = open_file (output_path, "w", NULL);
@@ -800,7 +916,13 @@ gen_tests_group (const char* suite_root, const char* output_dir,
         free (ftest_src);
         free (ftest_nme);
         free (input_path);
-        free (output_path);
+        free (output_path);	
+        free(makefile_tpl);   
+
+        for (int i = 0; i < HEADER_PARAMS_NUM; ++i)
+	    {
+	        free(hdr_param_value[i]);
+	    }
         fclose (pFile);
 
         ep = readdir (pDir);
@@ -858,11 +980,10 @@ add_test_in_scen (const char* suite_root, const char* scen_file,
  * Generate a local makefile 
  */
 static void 
-gen_makefile (const char* suite_root, const char* dir_path, const char* ftest_nme)
+gen_makefile(const char* suite_root, const char* dir_path, const char* ftest_nme, const char* makefile_tpl)
 {
     FILE* mf;
     char* makefile_path = NULL;
-    //char* common_mk_path = NULL;
 
     makefile_path = str_sum (dir_path, "/Makefile");
     mf = open_file (makefile_path, "w+", NULL);
@@ -874,33 +995,32 @@ gen_makefile (const char* suite_root, const char* dir_path, const char* ftest_nm
         return;
     }
     
-    //common_mk_path = strdup ("../common.mk");
-
-    fprintf (mf, "include ../common.mk\n\n");
-
-    fprintf (mf, "all: %s\n\n", ftest_nme);
-
-    fprintf (mf, "%s: %s.%s\n", ftest_nme, ftest_nme, (bGenCpp ? "cpp" : "c"));
-    fprintf (mf, "\t$(CC) $(CFLAGS) -o %s $< $(LFLAGS) $(LIBS)\n", ftest_nme);
-    fprintf (mf, "\tchmod a+x %s\n\n", ftest_nme);    
+    char* mf_str = strdup(makefile_tpl);
+    mf_str = replace_all_substr_in_string(mf_str, mk_params[MK_NAME_POS], ftest_nme);
+    mf_str = replace_all_substr_in_string(mf_str, mk_params[MK_DIR_PATH_POS], dir_path);
+    mf_str = replace_all_substr_in_string(mf_str, mk_params[MK_SUITE_ROOT_POS], suite_root);
     
-    fprintf (mf, "debug: %s.%s\n", ftest_nme, (bGenCpp ? "cpp" : "c"));
-    fprintf (mf, "\t$(CC) $(DBG_CFLAGS) -o %s $< $(DBG_LFLAGS) $(DBG_LIBS)\n", ftest_nme);
-    fprintf (mf, "\tchmod a+x %s\n\n", ftest_nme);
-
-    fprintf (mf, "clean:\n");    
-    fprintf (mf, "\trm -rf %s.o %s \n", ftest_nme, ftest_nme);    
-    fprintf (mf, "\n");    
-
+    //-- (begin) - to be deprecated later
+    char *t2c_basename = NULL;
+	if(hdr_param_value[PARAM_T2C_BASENAME_POS] != NULL && hdr_param_value[PARAM_T2C_BASENAME_POS][0] != 0 )
+    {
+		t2c_basename = strdup(hdr_param_value[PARAM_T2C_BASENAME_POS]);
+	}
+    else
+    {
+		t2c_basename = strdup(ftest_nme);
+	}
+    mf_str = replace_all_substr_in_string(mf_str, mk_params[MK_TMP_BASENAME_POS], t2c_basename);
+    free(t2c_basename);
+    //-- (end)
+    
+    fputs(mf_str, mf);
+    free(mf_str);
+    
     fclose (mf);
     free (makefile_path);
-    //free (common_mk_path);
 }
 
-/*
- *  Generates string that contains test for finput_tpl_path file
- *
- */
 static char* 
 gen_test (const char* test_tpl, const char* purpose_tpl, 
           const char* input_path, const char* group_nme, const char* test_nme)
@@ -988,10 +1108,7 @@ gen_test (const char* test_tpl, const char* purpose_tpl,
         free(common_tag_values[i]);
     }
     
-    for (i = 0; i < HEADER_PARAMS_NUM; ++i)
-    {
-        free(hdr_param_value[i]);
-    }
+
 
     test = replace_all_substr_in_string(test, TAG_SUITE_SUBDIR_NAME, test_dir);
     return test;
@@ -2070,9 +2187,9 @@ gen_common_makefile (const char* suite_root_path, const char* output_dir_path)
 
     FILE* mf;   // common.mk
 
-    common_mk_path = str_sum (output_dir_path, "common.mk");
+    common_mk_path = str_sum(output_dir_path, "common.mk");
         
-    mf = open_file (common_mk_path, "w", NULL);
+    mf = open_file(common_mk_path, "w", NULL);
 
     if (!mf)
     {
@@ -2081,7 +2198,7 @@ gen_common_makefile (const char* suite_root_path, const char* output_dir_path)
         return;
     }
 
-    fprintf (mf, "CC = %s\n\n", cfg_parm_values[CFG_COMPILER_POS]);
+    fprintf (mf, "TEST_CC = %s\n\n", cfg_parm_values[CFG_COMPILER_POS]);
 
     fprintf (mf, "TET_INC_DIR = $(TET_ROOT)/inc/tet3\n");
     fprintf (mf, "TET_LIB_DIR = $(TET_ROOT)/lib/tet3\n\n");
@@ -2099,20 +2216,22 @@ gen_common_makefile (const char* suite_root_path, const char* output_dir_path)
     fprintf(mf, "SUITE_INC_DIR = %s\n\n", suite_inc);
     
     fprintf(mf, "CC_SPECIAL_FLAGS := $(shell (cat $(T2C_SUITE_ROOT)/cc_special_flags) 2>/dev/null)\n");
-    fprintf(mf, "ADD_CFLAGS = %s $(CC_SPECIAL_FLAGS)\n", cfg_parm_values[CFG_COMP_FLAGS_POS]); 
-    fprintf(mf, "ADD_LFLAGS = %s\n\n", cfg_parm_values[CFG_LINK_FLAGS_POS]); 
-
-    fprintf(mf, "COMMON_CFLAGS =%s -I$(T2C_INC_DIR) -I$(SUITE_INC_DIR) $(ADD_CFLAGS)\n",
-        (bGenCpp ? " " : " -D\"_POSIX_C_SOURCE=200112L\" -std=c99"));
+    fprintf(mf, "TEST_COMMON_CFLAGS = -I$(T2C_INC_DIR) -I$(SUITE_INC_DIR) $(CC_SPECIAL_FLAGS)\n\n");
+    
+    fprintf(mf, "TEST_ADD_CFLAGS = %s\n", cfg_parm_values[CFG_COMP_FLAGS_POS]); 
+    fprintf(mf, "TEST_ADD_LFLAGS = %s\n\n", cfg_parm_values[CFG_LINK_FLAGS_POS]); 
+    
+    fprintf(mf, "TEST_STD_CFLAGS =%s\n", (bGenCpp ? " " : " -D\"_POSIX_C_SOURCE=200112L\" -std=c99"));
+    fprintf(mf, "TEST_FILE_EXT =%s\n", (bGenCpp ? "cpp" : "c"));
         
-    fprintf(mf, "CFLAGS = -O2 $(COMMON_CFLAGS) -I$(TET_INC_DIR) %s\n",
+    fprintf(mf, "TEST_CFLAGS = $(TEST_COMMON_CFLAGS) -I$(TET_INC_DIR) %s $(TEST_ADD_CFLAGS)\n",
         (bSingleProcess ? "-DT2C_SINGLE_PROCESS" : ""));
-    fprintf(mf, "DBG_CFLAGS = -g -DT2C_DEBUG $(COMMON_CFLAGS) -I$(DBG_INC_DIR)\n\n");
+    fprintf(mf, "DBG_CFLAGS = -DT2C_DEBUG $(TEST_COMMON_CFLAGS) -I$(DBG_INC_DIR) $(TEST_ADD_CFLAGS)\n\n");
     
-    fprintf(mf, "LFLAGS = $(ADD_LFLAGS)\n");
-    fprintf(mf, "DBG_LFLAGS = $(ADD_LFLAGS)\n\n");
+    fprintf(mf, "TEST_LFLAGS = $(TEST_ADD_LFLAGS)\n");
+    fprintf(mf, "DBG_LFLAGS = $(TEST_ADD_LFLAGS)\n\n");
     
-    fprintf(mf, "LIBS = $(TET_LIB_DIR)/tcm.o $(TET_LIB_DIR)/libapi.a $(T2C_LIB_DIR)/t2c_util.a\n");
+    fprintf(mf, "TEST_LIBS = $(TET_LIB_DIR)/tcm.o $(TET_LIB_DIR)/libapi.a $(T2C_LIB_DIR)/t2c_util.a\n");
     fprintf(mf, "DBG_LIBS = $(DBG_LIB_DIR)/dbgm.o $(DBG_LIB_DIR)/t2c_util_d.a\n\n");
     
     free(common_mk_path);
@@ -2176,6 +2295,7 @@ set_defaults ()
     cfg_parm_values[CFG_WAIT_TIME_POS]  = (char *)strdup("30");
     cfg_parm_values[CFG_LANGUAGE_POS]   = (char *)strdup("C");
     cfg_parm_values[CFG_SINGLE_POS]     = (char *)strdup("no");
+    cfg_parm_values[CFG_MK_TPL_POS]     = (char *)strdup("");
 }
 
 static void

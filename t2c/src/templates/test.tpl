@@ -120,6 +120,8 @@ TReqInfoList* head_ = NULL;  // A list of REQs. Use it to load and free REQs.
 TReqInfoPtr*  reqs_ = NULL;  // An array of pointers to the TReqInfo structures.
 int nreq_ = 0;               // Total number of REQs (length of the array).
 
+char* init_fail_reason_ = NULL;
+
 
 // function prototypes
 static void test_passed();
@@ -136,10 +138,10 @@ static void tp_launcher();
 
 // User-defined startup instructions
 static void
-user_startup(int* us_failed, char** reason)
+user_startup(int* us_failed, const char** reason)
 {
     int init_failed = FALSE;
-    char* reason_to_cancel = NULL;
+    const char* reason_to_cancel = NULL;
     
 <%startup%>
     if (init_failed) *us_failed = TRUE;
@@ -215,30 +217,33 @@ static void
 startup_func()
 {
     char* tsf_verb_ = NULL;
-    char* reason_to_cancel = NULL;
+    const char* reason_to_cancel = NULL;
     
     int init_failed = FALSE;
     
-    // Determine the value of the VERBOSE variable (if present). 
-    tsf_verb_ = tet_getvar("VERBOSE");
-    
+    // Determine the value of the VERBOSE variable (if present).
+    char* tsf_verb_name_ = strdup("VERBOSE");
+    tsf_verb_ = tet_getvar(tsf_verb_name_);
+    free(tsf_verb_name_);
+        
     if ((tsf_verb_ != NULL) && !strcmp(tsf_verb_, "yes"))
     {
         bVerbose = TRUE;
     }
     
     // Load requirement catalogues.
-    int bOK = t2c_rcat_load(rcat_names_, suite_subdir_, &head_, &reqs_, &nreq_);
-
 #ifndef T2C_IGNORE_RCAT_ERRORS
+    int bOK = t2c_rcat_load(rcat_names_, suite_subdir_, &head_, &reqs_, &nreq_);
     if (!bOK)
     {
         INIT_FAILED("<%object_name%>: unable to load req catalogue.");
     }
+#else
+    t2c_rcat_load(rcat_names_, suite_subdir_, &head_, &reqs_, &nreq_);
 #endif    
     
     char* href_root = t2c_get_suite_root();
-    char* beg = "{noreplace}<a href=\"";
+    const char* beg = "{noreplace}<a href=\"";
     char* stmp = NULL;
     
     stmp = str_sum(beg, href_root);
@@ -277,9 +282,11 @@ startup_func()
         int num_purp_ = sizeof(tet_testlist) / sizeof(tet_testlist[0]) - 1;
         int cur_purp_ = 1;
         
+        init_fail_reason_ = strdup(reason_to_cancel);
+        
         for (; cur_purp_ <= num_purp_; ++cur_purp_)
         {
-            tet_delete(cur_purp_, reason_to_cancel);
+            tet_delete(cur_purp_, init_fail_reason_);
         }
     }
     
@@ -301,6 +308,7 @@ cleanup_func()
     
     free(t2c_href_tpl_);    
     free(t2c_href_full_tpl_);
+    free(init_fail_reason_);
     
     close(pcc_pipe_[0]);
     close(pcc_pipe_[1]);

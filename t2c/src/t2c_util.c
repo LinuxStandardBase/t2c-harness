@@ -27,7 +27,7 @@ the 'T2C' test generation framework.
 
 #include "../include/t2c_util.h"
 #include "../include/t2c_trace.h"
-    
+   
 // Max number of symbols allowed to be inserted in the href template (see t2c_req_impl).
 #define NSYM_FOR_HREF   1024
 
@@ -1093,6 +1093,25 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
     }
     
     return bOK;
+}
+
+// A replacement for tet_printf that takes 'const char*' instead of 'char*'
+int
+t2c_printf(const char* format, ...)
+{
+    int res = -1;
+    char* fmt = NULL;
+    va_list ap;
+    
+    fmt = strdup(format);
+        
+    va_start(ap, format);
+	res = tet_vprintf(fmt, ap);
+	va_end(ap);
+    
+    free(fmt);
+    
+    return res;
 }
 
 // the end

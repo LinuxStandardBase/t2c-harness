@@ -1,0 +1,28 @@
+include ../common.mk
+
+TEST_NAME =       <%test_name%>
+TEST_DIR_PATH =   <%test_dir_path%>
+TEST_SUITE_ROOT = <%test_suite_root%>
+
+# ---- Temporary features
+TMP_BASENAME = <%test_tmp_basename%>
+ADD_SF = ../../src/common/$(TMP_BASENAME)/src
+ADD_SFC = $(shell (if [ -e "$(ADD_SF)" ]; then ls -l $(ADD_SF)/*.c | wc -l; else echo 0; fi) )
+ADD_SOURCES = $(shell (if [ $(ADD_SFC) -gt 0 ]; then echo '$(ADD_SF)/*.c'; fi) )
+TMP_CFLAGS = $(ADD_SOURCES) -I../../src/common/include -I../../src/common/$(TMP_BASENAME)/include
+# ---- End of temporary features
+
+# Mandatory targets are "all", "debug" and "clean".
+all: $(TEST_NAME)
+
+$(TEST_NAME): $(TEST_NAME).$(TEST_FILE_EXT)
+	$(TEST_CC) -O2 $(TEST_STD_CFLAGS) $(TEST_CFLAGS) $(TMP_CFLAGS) -o $(TEST_NAME) $< $(TEST_LFLAGS) $(TEST_LIBS)
+	chmod a+x $(TEST_NAME)
+
+debug: $(TEST_NAME).$(TEST_FILE_EXT)
+	$(TEST_CC) -g $(TEST_STD_CFLAGS) $(DBG_CFLAGS) $(TMP_CFLAGS) -o $(TEST_NAME) $< $(DBG_LFLAGS) $(DBG_LIBS)
+	chmod a+x $(TEST_NAME)
+
+clean:
+	rm -rf $(TEST_NAME).o $(TEST_NAME) 
+

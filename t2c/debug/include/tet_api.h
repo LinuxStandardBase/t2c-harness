@@ -39,6 +39,11 @@ tet_setblock();
 int 
 tet_printf(char* format, ...);
 
+// Does nothing in this case. Use TRACE with the verbose mode on for 
+// message output.
+int 
+tet_vprintf(char* format, va_list ap);
+
 void 
 tet_result(int result);
 

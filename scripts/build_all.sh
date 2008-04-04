@@ -12,6 +12,25 @@ WORK_DIR=$(cd `dirname $0` && pwd)
 T2C_SUITE_ROOT=${WORK_DIR}
 export T2C_SUITE_ROOT
 
+# Default paths for LSB 
+if [ -z ${LSB_ROOT} ]
+then
+	export LSB_ROOT=/opt/lsb
+fi
+
+if [ -z ${LSB_LIB_DIR} ]
+then
+	if [ -d "${LSB_ROOT}/lib64" ]; then
+		LSB_LIB_DIR=${LSB_ROOT}/lib64
+	else
+		LSB_LIB_DIR=${LSB_ROOT}/lib
+	fi
+	export LSB_LIB_DIR
+fi
+
+echo "LSB_ROOT is ${LSB_ROOT}, LSB_LIB_DIR is ${LSB_LIB_DIR}"
+
+#------------------------------------
 cd ${T2C_SUITE_ROOT}
 
 if [ -z ${TET_ROOT} ]
