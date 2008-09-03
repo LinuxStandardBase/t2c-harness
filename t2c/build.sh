@@ -76,22 +76,6 @@ then
         exit 1
 fi 
 
-# Build a support library and special object files for standalone tests
-cd ${T2C_ROOT}/t2c/debug/src
-make
-
-if [ ! -e ${T2C_ROOT}/t2c/debug/lib/dbgm.o ]
-then
-        echo "Failed to build dbgm.o, aborting..."
-        exit 1
-fi 
-
-if [ ! -e ${T2C_ROOT}/t2c/debug/lib/t2c_util_d.a ]
-then
-        echo "Failed to build T2C support library (debug version), aborting..."
-        exit 1
-fi 
-
 # Done
 echo
 echo Build completed successfully

@@ -26,10 +26,7 @@ the 'T2C' test generation framework.
 #include <string.h>
 
 #include "../include/t2c_util.h"
-#include "../include/t2c_trace.h"
-   
-// Max number of symbols allowed to be inserted in the href template (see t2c_req_impl).
-#define NSYM_FOR_HREF   1024
+//#include "../include/t2c_trace.h"
 
 // Sends the specified error message from the T2C util library to stderr.
 static void 
@@ -64,17 +61,17 @@ t2c_req_info_new(const char* rid, const char* text);
 void 
 t2c_req_info_delete(TReqInfoPtr ri);
 
-// Load the REQ catalogue from the specified file. The catalogue 
+// Load the REQ catalog from the specified file. The catalog 
 // will be appended at the tail (*ptail) of a list of TReqInfo structures. 
 // New tail of the list will be returned in '*ptail'.  
 // The function returns 0 if the operation cannot be completed (e.g. if 
-// the catalogue is corrupt), nonzero otherwise.
+// the catalog is corrupt), nonzero otherwise.
 int
 t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail);
 
-// This function constructs the path to the requirement catalogue and returns
+// This function constructs the path to the requirement catalog and returns
 // the result.
-// The catalogue is expected to be found in 
+// The catalog is expected to be found in 
 //      $T2C_SUITE_ROOT/<suite_subdir>/reqs/<rcat_name>.xml
 // The function does not check if the resulting path exists.
 //
@@ -692,6 +689,7 @@ int
 t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
 {
     int bOK = 1;
+    int nLine = 0;  // current line of file
     TReqInfoList* tail = *ptail;
 
     char* root_tag[] = {"requirements", NULL};
@@ -719,13 +717,14 @@ t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
     do
     {
         fgets(str, sz, fd);
+        ++nLine;
         if (ferror(fd))
         {
             bOK = 0;
-            fprintf(stderr, "An error occured while reading the file containing req catalogue.\n");
+            fprintf(stderr, "Line %d: An unspecified error occured while reading the file.\n", nLine);
             break;
         }
-        
+                
         // Process the line here
         pos = t2c_first_not_of(str, " \t\n\r");
 
@@ -742,14 +741,14 @@ t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
                 if (root_opened || root_closed)
                 {
                     bOK = 0;
-                    fprintf(stderr, "Unexpected header decl found: %s\n", pos);
+                    fprintf(stderr, "Line %d: Unexpected header decl found: %s\n", nLine, pos);
                     break;
                 }
 
                 bOK = t2c_parse_decl(pos);
                 if (!bOK)
                 {
-                    fprintf(stderr, "Invalid header decl: %s\n", pos);
+                    fprintf(stderr, "Line %d: Invalid header decl: %s\n", nLine, pos);
                 }
                 else
                 {
@@ -758,6 +757,9 @@ t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
                 break;
 
             case T2C_RCAT_OPEN_TAG:  // open tag
+                free(rtext);
+                rtext = strdup("");  // we'll append text to this string later
+                    
                 if (root_closed)
                 {
                     bOK = 0;
@@ -771,7 +773,7 @@ t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
                     if (ind != 0)
                     {
                         bOK = 0;
-                        fprintf(stderr, "No root tag found\n");
+                        fprintf(stderr, "Line %d: No root tag found\n", nLine);
                         break;
                     }
 
@@ -792,14 +794,14 @@ t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
                     if (ind != 0)
                     {
                         bOK = 0;
-                        fprintf(stderr, "Invalid req tag found: %s\n", pos);
+                        fprintf(stderr, "Line %d: Invalid req tag found: %s\n", nLine, pos);
                         break;
                     }
 
                     if (attribs == NULL)
                     {
                         bOK = 0;
-                        fprintf(stderr, "REQ id is not specified in %s\n", pos);
+                        fprintf(stderr, "Line %d: REQ id is not specified in %s\n", nLine, pos);
                         break;
                     }
 
@@ -807,7 +809,7 @@ t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
                     if (!bOK || !attr_id_val[0])
                     {
                         bOK = 0;
-                        fprintf(stderr, "REQ id is not specified in %s\n", pos);
+                        fprintf(stderr, "Line %d: REQ id is not specified in %s\n", nLine, pos);
                         break;
                     }
 
@@ -816,41 +818,52 @@ t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
                 break;
 
             case T2C_RCAT_BODY:      // body
-                // Remove trailing newline
-                num = strlen(pos);
-                if ((num > 0) && ((pos[num - 1] == '\n') || (pos[num - 1] == '\r')))
+                // First check if we are at the beginning of the new tag
+                if (pos[0] == '<')
                 {
-                    pos[num - 1] = 0;
-                }
-
-                if ((num > 1) && ((pos[num - 2] == '\n') || (pos[num - 2] == '\r')))
-                {
-                    pos[num - 2] = 0;
-                }
-
-                // Create a new list element
-                attr_id_val[0] = t2c_unreplace_special_chars(attr_id_val[0]);
-
-                rtext = strdup(pos);
-                rtext = t2c_unreplace_special_chars(rtext);
-
-                tail = t2c_req_info_list_append(tail, attr_id_val[0], rtext);
-                free(rtext);
-
-                mode = T2C_RCAT_CLOSE_TAG;
-                break;
-
-            case T2C_RCAT_CLOSE_TAG: // close tag
-                bOK = t2c_parse_close_tag(pos, req_tag[0]);
-                if (!bOK)
-                {
-                    fprintf(stderr, "Expected closing req tag, found: %s\n", pos);
-                    mode = T2C_RCAT_STOP;
+                    // Create a list item with text accumulated in rtext
+                    if (strlen(rtext) == 0)
+                    {
+                        fprintf(stderr, "Line %d: WARNING: Text is empty for the \"%s\" requirement\n", nLine, attr_id_val[0]);
+                    }
+                    attr_id_val[0] = t2c_unreplace_special_chars(attr_id_val[0]);
+                    rtext = t2c_unreplace_special_chars(rtext);
+                    tail = t2c_req_info_list_append(tail, attr_id_val[0], rtext);
+                    
+                    // Try to parse a closing tag
+                    bOK = t2c_parse_close_tag(pos, req_tag[0]);
+                    if (!bOK)
+                    {
+                        fprintf(stderr, "Line %d: Expected closing req tag, found: %s\n", nLine, pos);
+                        mode = T2C_RCAT_STOP;
+                    }
+                    else
+                    {
+                        mode = T2C_RCAT_OPEN_TAG;
+                    }
+                    break;
                 }
                 else
                 {
-                    mode = T2C_RCAT_OPEN_TAG;
+                // Append the string to rtext
+                    // Remove trailing newline
+                    num = strlen(pos);
+                    if ((num > 0) && ((pos[num - 1] == '\n') || (pos[num - 1] == '\r')))
+                    {
+                        pos[num - 1] = 0;
+                    }
+
+                    if ((num > 1) && ((pos[num - 2] == '\n') || (pos[num - 2] == '\r')))
+                    {
+                        pos[num - 2] = 0;
+                    }
+
+                    rtext = str_append(rtext, pos);
+                    rtext = str_append(rtext, " ");
+                    
+                    // Mode is not changed: mode = T2C_RCAT_BODY;
                 }
+        
                 break;
 
             default:
@@ -863,6 +876,7 @@ t2c_rcat_load_impl(FILE* fd, TReqInfoList** ptail)
         if (!bOK) break;
     } while(!feof(fd));
 
+    free(rtext);
     free(str);
 
     // cleanup
@@ -931,99 +945,6 @@ t2c_rcat_sort(TReqInfoPtr reqs[], int nreq)
     return;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-
-void 
-t2c_req_impl(const char* r_id, const char* r_comment, 
-             TReqInfoPtr reqs[], int nreq,
-             const char* fname, int line, 
-             int bVerbose,
-             int gen_hlinks,
-             const char* href_tpl)
-{
-    const char* str_empty = "<<< REQ NOT FOUND >>>";
-    const char* href_end = "</a>{/noreplace}";
-    char* href_buf = NULL;
-    
-    href_buf = (char*)malloc((strlen(href_tpl) + strlen(href_end) + 1 + NSYM_FOR_HREF) * sizeof(char));
-        
-    int bApp = 0;
-    
-    TRACE_NO_JOURNAL("File: %s, line: %d.", fname, line);
-    if (r_comment[0] != 0) 
-    {
-        TRACE0(r_comment);
-    }
-
-    if(!strchr(r_id, ';')) // if there is only one requirement in the list
-    {
-        TRACE0(" ");
-        TRACE0("Requirement failed:");
-        
-    } 
-    else // the list consists of 2 or more requirements
-    {
-        TRACE0(" ");
-        TRACE0("At least one of the following requirements failed:");
-        TRACE0(" ");
-    }
-    
-    // split the list into single IDs and process them one by one.
-    
-    char* rlist = strdup(r_id); // a working copy
-    char *seps   = " ;\t";
-    
-    char* rid = strtok(rlist, seps);
-    while (rid != NULL)
-    {
-        // Process this ID.
-        if (strstr(rid, "app.")) // application requirement
-        {
-            bApp = 1;
-        }
-        
-        // Get the requirement text.
-        const char* txt = t2c_rcat_find(rid, reqs, nreq);
-        if (!txt) 
-        {
-            txt = str_empty;
-        }
-        
-        if (gen_hlinks) 
-        {
-            sprintf(href_buf, href_tpl, "req", line);
-            strcat(href_buf, rid);
-            strcat(href_buf, "</a>{/noreplace}");
-        }
-        else
-        {
-            strcpy(href_buf, rid);
-        }
-        
-        TRACE("{%s}", href_buf);
-        TRACE("%s", txt);
-        TRACE0(" ");
-        
-        // Get the next req.
-        rid = strtok(NULL, seps);
-    }
-  
-    if (bApp)   // there is at least one "app"-requirement
-    {
-        TRACE0("One or more application requirements failed.");
-        TRACE0("There might be a bug in the test itself. Please report this to the test developer.");
-        tet_result(TET_UNRESOLVED);
-    }
-    else
-    {
-        tet_result(TET_FAIL);
-    }
-    
-    free(href_buf);
-    free(rlist);
-    return;
-}      
-
 int 
 t2c_rcat_load(const char* rcat_names[], const char* suite_subdir, 
     TReqInfoList** phead, TReqInfoPtr** preqs, int* nreq)
@@ -1037,7 +958,7 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
     
     if (rcat_names[0] == NULL)
     {
-        fprintf(stderr, "t2c_rcat_load(): the list of req catalogues is empty\n");
+        fprintf(stderr, "t2c_rcat_load(): the list of req catalogs is empty\n");
         return 0;
     }
     
@@ -1048,7 +969,7 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
         return 0;
     }
     
-    // Walk the list of names and load appropriate req catalogues
+    // Walk the list of names and load appropriate req catalogs
     TReqInfoList* tail = *phead;
     int found = 0;
     for (int i = 0; rcat_names[i] != NULL; ++i)
@@ -1063,10 +984,11 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
         }
         
         found = 1;  // a file has been found and opened.
+        fprintf(stderr, "Loading requirement catalog: %s\n", rcpath);
         bOK = t2c_rcat_load_impl(fd, &tail);
         if (!bOK)
         {
-            fprintf(stderr, "Invalid requirement catalogue: %s\n", rcpath);
+            fprintf(stderr, "Invalid requirement catalog: %s\n", rcpath);
             free(rcpath);
             fclose(fd);    
             break;
@@ -1079,7 +1001,7 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
     if (!found)
     {
         bOK = 0;
-        fprintf(stderr, "None of the files containing requirement catalogues could be opened.\n");
+        fprintf(stderr, "None of the files containing requirement catalogs could be opened.\n");
     }
     
     if (bOK)
@@ -1093,25 +1015,6 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
     }
     
     return bOK;
-}
-
-// A replacement for tet_printf that takes 'const char*' instead of 'char*'
-int
-t2c_printf(const char* format, ...)
-{
-    int res = -1;
-    char* fmt = NULL;
-    va_list ap;
-    
-    fmt = strdup(format);
-        
-    va_start(ap, format);
-	res = tet_vprintf(fmt, ap);
-	va_end(ap);
-    
-    free(fmt);
-    
-    return res;
 }
 
 // the end

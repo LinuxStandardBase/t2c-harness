@@ -44,6 +44,7 @@ Example:
 #include <unistd.h>
 
 #include "../include/t2c_util.h"
+#include "../include/param.h"
 
 /*******************************************************************************/
 #define NCMD_PARAMS 3       // Number of mandatory command line parameters to be specified
@@ -148,7 +149,8 @@ int bSingleProcess = 0;
 /************************************************************************/
 #define COMMON_TEST_TPL      "test.tpl"    /* common test case template*/
 #define COMMON_PURPOSE_TPL   "purpose.tpl" /* common test purpose template*/
-#define DEFAULT_MAKEFILE_TPL "default.tmk"
+#define DEFAULT_MAKEFILE_TPL "default.tmk" /* default makefile template */
+#define COMMON_MAKEFILE_TPL  "common.tmk"  /* template of a common makefile */
 #define COMMON_TPL_DIR       "t2c/src/templates/"
 
 #define COMMON_TAGS_NUM     (sizeof(common_tags)/sizeof(common_tags[0]))
@@ -189,13 +191,15 @@ static char* common_tags[] = {
 #define MAX_PARAMS_NUM  256
 #define MAX_TARGETS_NUM 256
     
-#define TAGS_NUM 6
+#define TAGS_NUM 8
 #define COMMENT_TAG_POS  0
 #define DEFINE_TAG_POS   1
 #define CODE_TAG_POS     2
 #define PURPNUM_TAG_POS  3
 #define UNDEF_TAG_POS    4
 #define TARGETS_TAG_POS  5
+#define	LSB_MIN_VER_POS	 6
+#define	LSB_MAX_VER_POS  7
     
 static char* tags[] = { 
     "<%comment%>",
@@ -203,7 +207,9 @@ static char* tags[] = {
     "<%code%>",
     "<%purpose_number%>",
     "<%undef%>",
-    "<%targets%>"
+    "<%targets%>",
+    "<%lsb_min_ver%>",
+    "<%lsb_max_ver%>"
 };
 
 #define TAG_FINALLY_NAME "<%finally%>"
@@ -222,6 +228,26 @@ static char* mk_params[] = {
 #define MK_DIR_PATH_POS     1
 #define MK_SUITE_ROOT_POS   2
 #define MK_TMP_BASENAME_POS 3
+
+// Placeholders for parameters in common.mk
+static char* common_mk_params[] = {
+    "<%test_dir%>",
+    "<%compiler%>",
+    "<%add_cflags%>",
+    "<%add_lflags%>",
+    "<%test_std_cflags%>",
+    "<%test_file_ext%>",
+    "<%single_process_flag%>"
+};
+// Positions of makefile parameter placeholders in common_mk_params[]
+#define CMK_PARAM_NUM    (sizeof(common_mk_params)/sizeof(common_mk_params[0]))
+#define CMK_DIR_PATH_POS        0
+#define CMK_COMPILER_POS        1
+#define CMK_ADD_CFLAGS_POS      2
+#define CMK_ADD_LFLAGS_POS      3
+#define CMK_TEST_STD_FLAGS_POS  4
+#define CMK_TEST_FILE_EXT_POS   5
+#define CMK_SP_FLAG_POS         6
 
 // func_scen
 char* func_tests_scenario_file_name = "func_scen";
@@ -260,6 +286,9 @@ char* def_mk_tpl = NULL;
 
 // Makefile template for a subsuite
 char* subsuite_mk_tpl = NULL;
+
+// Number of current line in a T2C file
+int ln_count = 0;
 
 /***********************************************************************/
 
@@ -333,7 +362,7 @@ size - max line size.
 */
 static char*
 parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
-            char** pcf_funcs, const char* pcf_name);
+            char** pcf_funcs, const char* pcf_name, const char *lsb_min_ver, const char *lsb_max_ver);
 
 /*
 Matches <TARGETS> section. On success, 1 is returned. If the section
@@ -419,7 +448,7 @@ main (int argc, char* argv[])
     int i;
     char* src_dir_end  = "src";
     char* out_dir_end  = "tests";
-    char* scen_dir_end = "scenarios";    
+    char* scen_dir_end = "scenarios";   
 
     if (argc < NCMD_PARAMS)
     {
@@ -442,7 +471,7 @@ main (int argc, char* argv[])
         {
             /* process the specified config. file here */
             load_config(argv[ARGV_PARAM_INDEX]);
-            printf("Language is %s\n", (bGenCpp ? "CPP" : "C"));
+            printf("Language is %s.\n", (bGenCpp ? "CPP" : "C"));
         }
     }
     
@@ -459,7 +488,7 @@ main (int argc, char* argv[])
         free(cfg_parm_values[CFG_MK_TPL_POS]);
         cfg_parm_values[CFG_MK_TPL_POS] = tmp_path;
 
-        printf("Makefile template for this test suite: $T2C_SUITE_ROOT/%s\n", 
+        printf("Makefile template for this test suite: $T2C_SUITE_ROOT/%s.\n", 
             cfg_parm_values[CFG_MK_TPL_POS]);
     }
     
@@ -885,7 +914,7 @@ gen_tests_group (const char* suite_root, const char* output_dir,
         if (test == NULL)
         {
             ep = readdir (pDir);
-            fprintf (stderr, "warning: test generator is unable to generate test for %s\n", input_path);
+            fprintf (stderr, "Test generator is unable to generate test for %s\n", input_path);
             free (input_path);
             free (ftest_nme);
             free(makefile_tpl);
@@ -1054,8 +1083,8 @@ gen_test (const char* test_tpl, const char* purpose_tpl,
     
     if ((!bOK) || (test_nme == NULL)) 
     { 
-        return (NULL);
-    };
+        return NULL;
+    }
     test = strdup(test_tpl);
 
     common_tag_values[GROUP_NAME_POS]   = (char*)strdup(group_nme); 
@@ -1147,6 +1176,7 @@ parse_header(const char* input_path)
     do
     {
         fgets(str, size, ft2c_file);
+        ++ln_count;
         tstr = trim_with_nl(str);
        
         for (i = 0; i < HEADER_PARAMS_NUM; ++i)
@@ -1228,8 +1258,6 @@ fgets_and_skip_comments (char* str, int num, FILE* stream, int* str_counter)
     }
     while ((str[0] == '#') && !macro && (!feof(stream)) && (!ferror(stream)));
 
-    /*free (tstr);*/
-
     if ((feof(stream)) || (ferror(stream)))
     {
         return NULL;
@@ -1245,16 +1273,20 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
            char** pcf_funcs)
 {
     FILE* fl = NULL;
-    int ln_count = 0;
     int size = 0;
     char* str = NULL;
     char* str_t = NULL;
     char* text = NULL;
+    char* lsb_min_ver = NULL;
+    char* lsb_max_ver = NULL;
     
     int nBlocks = 0;
     int isBad = 0;
 
+    // reset line count
+    ln_count = 0;
     printf ("Parsing file %s\n", input_path);
+    
     *purposes_number = 0;
 
     if (!is_file_exists(input_path))
@@ -1262,16 +1294,18 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
         return 0;
     }
 
+	
     fl = open_file (input_path, "r", NULL);
+
     size = fsize (fl);
-    
+
     if (size <= 2)
     {
         return 0;
     }
 
     str = alloc_mem_for_string (str, size + 1);
-    
+
     *pstrGlobals = strdup("");
     *pstrStartup = strdup("");
     *pstrCleanup = strdup("");
@@ -1279,11 +1313,12 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
     *pcf_funcs = strdup("");
     
     char* attribs = NULL; 
-    char* bl_attr_name[] = {"parentControlFunction", NULL};
-    char* bl_attr_val[]  = {NULL, NULL};
+    char* bl_attr_name[] = {"parentControlFunction", "lsbMinVersion", "lsbMaxVersion", NULL};
+    char* bl_attr_val[]  = {NULL, NULL, NULL, NULL};
     
     char* pcf_name = NULL;
     
+
     do
     {
         if (fgets_and_skip_comments (str, size, fl, &ln_count) == NULL)
@@ -1303,7 +1338,7 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
             if (text == NULL) 
             {
                 isBad = 1;
-                fprintf (stderr, "Invalid global block in %s\n", input_path);
+                fprintf (stderr, "Line %d: Invalid GLOBAL section.\n", ln_count);
                 break;
             }
             
@@ -1318,7 +1353,7 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
             if (text == NULL) 
             {
                 isBad = 1;
-                fprintf (stderr, "Invalid startup block in %s\n", input_path);
+                fprintf (stderr, "Line %d: Invalid STARTUP section.\n", ln_count);
                 break;
             }
             
@@ -1333,7 +1368,7 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
             if (text == NULL) 
             {
                 isBad = 1;
-                fprintf (stderr, "Invalid cleanup block in %s\n", input_path);
+                fprintf (stderr, "Line %d: Invalid CLEANUP section.\n", ln_count);
                 break;
             }
             
@@ -1346,7 +1381,7 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
             if (!t2c_parse_attributes(attribs, bl_attr_name, bl_attr_val))
             {
                 isBad = 1;
-                fprintf (stderr, "Invalid attribute specification for <BLOCK> in %s\n", input_path);
+                fprintf (stderr, "Line %d: Invalid attribute specification for <BLOCK> section.\n", ln_count);
                 break;
             }
             
@@ -1360,14 +1395,41 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
                 pcf_name = strdup("NULL");
             }
             
+            if (bl_attr_val[1])
+            {
+                lsb_min_ver = bl_attr_val[1];
+                bl_attr_val[1] = NULL;
+            }
+            else
+            {
+                lsb_min_ver = strdup("NULL");
+            }
+            
+            if (bl_attr_val[2])
+            {
+                lsb_max_ver = bl_attr_val[2];
+                bl_attr_val[2] = NULL;
+            }
+            else
+            {
+                lsb_max_ver = strdup("NULL");
+            }
+            
             free(text);
-            text = parse_block(fl, size, purpose_tpl, purposes_number, pcf_funcs, pcf_name);
+            
+            int ln_beg = ln_count;
+            text = parse_block(fl, size, purpose_tpl, purposes_number, pcf_funcs, pcf_name, lsb_min_ver, lsb_max_ver);
+    
+    		free (lsb_max_ver);
+    		free (lsb_min_ver);
             free(pcf_name);
             
             if (text == NULL) 
             {
                 isBad = 1;
-                fprintf (stderr, "Invalid <BLOCK> block in %s\n", input_path);
+                fprintf (stderr, 
+                    "Line %d: The BLOCK section that begins at line %d is invalid.\n", 
+                    ln_count, ln_beg);
                 break;
             }
  
@@ -1376,7 +1438,8 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
             ++nBlocks;
             break;
         default:
-            fprintf(stderr, "parseFile(): t2c_parse_open_tag() returned invalid index: %d.\n");
+            fprintf(stderr, "Line %d: parseFile(): t2c_parse_open_tag() returned invalid index: %d.\n", 
+                ln_count, tag_num);
             isBad = 1;
             break;
         }
@@ -1399,14 +1462,12 @@ parse_file(const char* input_path, const char* purpose_tpl, int* purposes_number
     }
 
     free(attribs);
-
     return ((!isBad) && (nBlocks > 0));
 }
 
 static char*
 parse_global(FILE* fl, int size)
 {
-    int ln_count = 0;
     char* str = NULL;
     char* text = NULL;
     int isBad = 0;
@@ -1424,12 +1485,14 @@ parse_global(FILE* fl, int size)
     text = strdup("");
     str = alloc_mem_for_string (str, size + 1);
     
+    int close_tag_found = 0;
     do
     {
         fgets_and_skip_comments (str, size, fl, &ln_count);
 
         if (t2c_parse_close_tag(str, top_tag[ITOP_GLOBAL]))
         {
+            close_tag_found = 1;
             break;
         }
         else
@@ -1438,19 +1501,25 @@ parse_global(FILE* fl, int size)
         }
     }
     while (!feof(fl) && !ferror(fl));
-
+    
+    if (!close_tag_found)
+    {
+        fprintf (stderr, "Line %d: No close tag found for GLOBAL section.\n", ln_count);
+        isBad = 1;
+    }
+    
     free(str);
     if (isBad && text)
     {
         free(text);
     }
+
     return ((isBad) ? NULL : text);
 }
 
 static char*
 parse_startup(FILE* fl, int size)
 {
-    int ln_count = 0;
     char* str = NULL;
     char* text = NULL;
     int isBad = 0;
@@ -1468,12 +1537,14 @@ parse_startup(FILE* fl, int size)
     text = strdup("");
     str = alloc_mem_for_string (str, size + 1);
 
+    int close_tag_found = 0;
     do
     {
         fgets_and_skip_comments (str, size, fl, &ln_count);
 
         if (t2c_parse_close_tag(str, top_tag[ITOP_STARTUP]))
         {
+            close_tag_found = 1;
             break;
         }
         else
@@ -1482,19 +1553,25 @@ parse_startup(FILE* fl, int size)
         }
     }
     while (!feof(fl) && !ferror(fl));
+	
+	if (!close_tag_found)
+    {
+        fprintf (stderr, "Line %d: No close tag found for STARTUP section.\n", ln_count);
+        isBad = 1;
+    }    
 
     free(str);
     if (isBad && text)
     {
         free(text);
     }
+
     return ((isBad) ? NULL : text);
 }
 
 static char*
 parse_cleanup(FILE* fl, int size)
 {
-    int ln_count = 0;
     char* str = NULL;
     char* text = NULL;
     int isBad = 0;
@@ -1512,12 +1589,14 @@ parse_cleanup(FILE* fl, int size)
     text = strdup("");
     str = alloc_mem_for_string (str, size + 1);
 
+    int close_tag_found = 0;
     do
     {
         fgets_and_skip_comments (str, size, fl, &ln_count);
 
         if (t2c_parse_close_tag(str, top_tag[ITOP_CLEANUP]))
         {
+            close_tag_found = 1;
             break;
         }
         else
@@ -1526,20 +1605,27 @@ parse_cleanup(FILE* fl, int size)
         }
     }
     while (!feof(fl) && !ferror(fl));
+    
+    if (!close_tag_found)
+    {
+        fprintf (stderr, "Line %d: No close tag found for CLEANUP section.\n", ln_count);
+        isBad = 1;
+    }
 
     free(str);
     if (isBad && text)
     {
         free(text);
     }
+
     return ((isBad) ? NULL : text);
 }
 
 static char*
 parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
-            char** pcf_funcs, const char* pcf_name)
+            char** pcf_funcs, const char* pcf_name, const char *lsb_min_ver, const char *lsb_max_ver)
 {
-    int ln_count = 0;
+
     char* str = NULL;
     char* str_t = NULL;    
     char* text = NULL;
@@ -1558,9 +1644,10 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
     char* templ = NULL;
     char* finally_code = NULL;
     char* tag_values[TAGS_NUM];
-
+    
     int i = 0;
-
+    int ln_beg = ln_count;
+        
     if (!fl)
     {
         return NULL;
@@ -1584,6 +1671,32 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
     tag_values[COMMENT_TAG_POS] = strdup("// Target interfaces:\n");
     tag_values[TARGETS_TAG_POS] = strdup("Target interface(s):\\n");
     
+    if (strcmp (lsb_min_ver, STRING_NULL) == 0)
+    {
+    	tag_values[LSB_MIN_VER_POS] = strdup (lsb_min_ver);
+		tag_values[LSB_MIN_VER_POS] = str_append (tag_values[LSB_MIN_VER_POS], STRING_SEMICOLON);
+    }
+	else
+	{
+    	tag_values[LSB_MIN_VER_POS] = strdup (STRING_APOSTR);
+		tag_values[LSB_MIN_VER_POS] = str_append (tag_values[LSB_MIN_VER_POS], lsb_min_ver);
+		tag_values[LSB_MIN_VER_POS] = str_append (tag_values[LSB_MIN_VER_POS], STRING_APOSTR);
+		tag_values[LSB_MIN_VER_POS] = str_append (tag_values[LSB_MIN_VER_POS], STRING_SEMICOLON);
+	}
+    
+    if (strcmp (lsb_max_ver, STRING_NULL) == 0)
+    {
+    	tag_values[LSB_MAX_VER_POS] = strdup (lsb_max_ver);
+		tag_values[LSB_MAX_VER_POS] = str_append (tag_values[LSB_MAX_VER_POS], STRING_SEMICOLON);
+    }
+	else
+	{
+    	tag_values[LSB_MAX_VER_POS] = strdup (STRING_APOSTR);
+		tag_values[LSB_MAX_VER_POS] = str_append (tag_values[LSB_MAX_VER_POS], lsb_max_ver);
+		tag_values[LSB_MAX_VER_POS] = str_append (tag_values[LSB_MAX_VER_POS], STRING_APOSTR);
+		tag_values[LSB_MAX_VER_POS] = str_append (tag_values[LSB_MAX_VER_POS], STRING_SEMICOLON);
+	}
+    
     text = strdup("");
     finally_code = strdup("");
     str = alloc_mem_for_string(str, size + 1);
@@ -1593,14 +1706,18 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
 
     do
     {
+        int old_purp_num = 0;
         fgets_and_skip_comments(str, size, fl, &ln_count);
         
         if (t2c_parse_close_tag(str, top_tag[ITOP_BLOCK]))
         {
+        	
             if (!isCodeFound)
             {
                 isBad = 1;
-                fprintf(stderr, "No code section is specified in the block.\n");
+                fprintf(stderr, 
+                    "Line %d: No CODE section is specified in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
 
@@ -1609,7 +1726,9 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
                 if (!templ)
                 {
                     isBad = 1;
-                    fprintf(stderr, "Code template is NULL.\n");
+                    fprintf(stderr, 
+                        "Line %d: Code template is invalid in the BLOCK beginning at line %d.\n",
+                        ln_count, ln_beg);
                     break;
                 }
                 
@@ -1620,7 +1739,6 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
                                         
                 isPurposeFound = 1;
 
-                //purp = parse_purpose (fl, size, templ, finally_code, purposes_number);
                 purp = replace_all_substr_in_string (purp, "<%params%>", "//    none\n");
                 
                 sprintf (strTmp, "%d", *purposes_number);
@@ -1655,7 +1773,9 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
             isBad = !parse_targets(fl, size, targets, &nTargets);
             if (isBad)
             {
-                fprintf(stderr, "Invalid target section\n");
+                fprintf(stderr, 
+                    "Line %d: Invalid TARGET section in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
 
@@ -1683,7 +1803,9 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
             if (isDefineFound)
             {
                 isBad = 1;
-                fprintf(stderr, "There must be only one <DEFINE> section.\n");
+                fprintf(stderr, 
+                    "Line %d: Multiple DEFINE sections found in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
 
@@ -1693,7 +1815,9 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
                 &(tag_values[DEFINE_TAG_POS]), &(tag_values[UNDEF_TAG_POS]));
             if (isBad)
             {
-                fprintf(stderr, "Invalid <DEFINE> section\n");
+                fprintf(stderr, 
+                    "Line %d: Invalid DEFINE section in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
 
@@ -1705,23 +1829,29 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
             if (!finally_code)
             {
                 isBad = 1;
-                fprintf(stderr, "Invalid <FINALLY> section found.\n");
+                fprintf(stderr, 
+                    "Line %d: Invalid FINALLY section found in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
             
             break;
         case IBL_CODE:
-            if (!isTargetFound)
+            if (!isTargetFound || (nTargets == 0))
             {
                 isBad = 1;
-                fprintf(stderr, "No target interfaces are specified.\n");
+                fprintf(stderr, 
+                    "Line %d: No target interfaces are specified in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
 
             if (isCodeFound)
             {
                 isBad = 1;
-                fprintf(stderr, "There must be only one <CODE> section.\n");
+                fprintf(stderr, 
+                    "Line %d: Multiple CODE sections found in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
             
@@ -1742,7 +1872,9 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
             if (tag_values[CODE_TAG_POS] == NULL)
             {
                 isBad = 1;
-                fprintf(stderr, "The <CODE> section is invalid.\n");
+                fprintf(stderr, 
+                    "Line %d: The CODE section is invalid in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
 
@@ -1757,26 +1889,35 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
             }
             break;
         case IBL_PURPOSE:
-            
             if (!isCodeFound)
             {
                 isBad = 1;
-                fprintf (stderr, "Found <PURPOSE> section before <CODE>\n");
+                fprintf (stderr, 
+                    "Line %d: Found PURPOSE section before CODE section in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
             
             isPurposeFound = 1;
             
-            // add a proper item to the array of parent control func ptrs
-            *pcf_funcs = str_append(*pcf_funcs, "    ");
-            *pcf_funcs = str_append(*pcf_funcs, pcf_name);
-            *pcf_funcs = str_append(*pcf_funcs, ",\n");
-            
+            old_purp_num = *purposes_number;
             purp = parse_purpose(fl, size, templ, finally_code, purposes_number);
+            
+            // add proper items to the array of parent control func ptrs
+            // (the same for all newly parsed test purposes)
+            for (i = old_purp_num; i < *purposes_number; ++i)
+            {
+                *pcf_funcs = str_append(*pcf_funcs, "    ");
+                *pcf_funcs = str_append(*pcf_funcs, pcf_name);
+                *pcf_funcs = str_append(*pcf_funcs, ",\n");
+            }
+
             if (purp == NULL)
             {
                 isBad = 1;
-                fprintf (stderr, "Invalid <PURPOSE> section found.\n");
+                fprintf (stderr, 
+                    "Line %d: Invalid PURPOSE section found in the BLOCK beginning at line %d.\n", 
+                    ln_count, ln_beg);
                 break;
             }
 
@@ -1785,7 +1926,9 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
             
             break;
         default:
-            fprintf(stderr, "parseBlock(): t2c_parse_open_tag() returned invalid index: %d.\n");
+            fprintf(stderr, 
+                "Line %d: parseBlock(): t2c_parse_open_tag() returned invalid index: %d.\n",
+                ln_count, tag_num);
             isBad = 1;
             break;        
         }
@@ -1798,7 +1941,8 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
 
     if (!isEndFound)
     {
-        fprintf(stderr, "End of the block is not found\n");
+        fprintf(stderr, "Line %d: End of the BLOCK that begins at line %d is not found.\n", 
+            ln_count, ln_beg);
         isBad = 1;
     }
 
@@ -1819,14 +1963,13 @@ parse_block(FILE* fl, int size, const char* purpose_tpl, int* purposes_number,
     {
         free(text);
     }
-    
+
     return ((isBad) ? NULL : text);
 }
 
 static int
 parse_targets(FILE* fl, int size, char** pstrTargets, int* pnTargets)
 {
-    int ln_count = 0;
     char* str = NULL;
     char* str_t = NULL;
     int isBad = 0;
@@ -1846,6 +1989,7 @@ parse_targets(FILE* fl, int size, char** pstrTargets, int* pnTargets)
 
     str = alloc_mem_for_string (str, size + 1);
 
+    int close_tag_found = 0;
     do
     {
         fgets_and_skip_comments (str, size, fl, &ln_count);
@@ -1853,6 +1997,7 @@ parse_targets(FILE* fl, int size, char** pstrTargets, int* pnTargets)
 
         if (t2c_parse_close_tag(str, bl_tag[IBL_TARGETS]))
         {
+            close_tag_found = 1;
             break;
         }
         else
@@ -1862,7 +2007,8 @@ parse_targets(FILE* fl, int size, char** pstrTargets, int* pnTargets)
                 
                 if (*pnTargets >= MAX_TARGETS_NUM-1)
                 {
-                    fprintf(stderr, "Too many target interfaces in a single block.\n");
+                    fprintf(stderr, "Line %d: Too many target interfaces in a single BLOCK.\n",
+                        ln_count);
                     break;
                 }
 
@@ -1872,15 +2018,20 @@ parse_targets(FILE* fl, int size, char** pstrTargets, int* pnTargets)
         }
     }
     while (!feof(fl) && !ferror(fl));
-
+    if (!close_tag_found)
+    {
+        fprintf (stderr, "Line %d: No close tag found for TARGETS section.\n", ln_count);
+        isBad = 1;
+    }
+    
     free(str);
+
     return (!isBad);
 }
 
 static int
 parse_defines(FILE* fl, int size, char** pstrDefines, char** pstrUndefs)
 {
-    int ln_count = 0;
     char* str = NULL;
     char* str_t = NULL;
     int isBad = 0;
@@ -1899,48 +2050,63 @@ parse_defines(FILE* fl, int size, char** pstrDefines, char** pstrUndefs)
     *pstrUndefs = strdup("");
     str = alloc_mem_for_string(str, size + 1);
 
+    int close_tag_found = 0;
     do
     {
         fgets_and_skip_comments(str, size, fl, &ln_count);
         if (t2c_parse_close_tag(str, bl_tag[IBL_DEFINE]))
         {
+            close_tag_found = 1;
             break;
         }
         else
         {
-            str_t = trim (str);
-            *pstrDefines = str_append (*pstrDefines, str_t);
+            str_t = trim(str);
+            *pstrDefines = str_append(*pstrDefines, str_t);
 
             if (strstr (str, "#define"))
             {
                 char* delims = " \t\n\r";    
                 char* token = NULL;
 
-                token = strtok (str, delims); /* to #define */
-                token = strtok (NULL, delims); /* to NAME */
+                token = strtok(str, delims); /* to #define */
+                token = strtok(NULL, delims); /* to NAME */
 
                 if (token == NULL)
                 {
-                    fprintf(stderr, "Invalid #define.\n");
+                    fprintf(stderr, "Line %d: Invalid #define directive.\n", ln_count);
                     isBad = 1;
                     break;
                 }
-                *pstrUndefs = str_append (*pstrUndefs, "#undef ");
-                *pstrUndefs = str_append (*pstrUndefs, token);
-                *pstrUndefs = str_append (*pstrUndefs, "\n");
+                
+                char* bpos = strchr(token, '(');
+                if (bpos != NULL)
+                {
+                    *bpos = 0;
+                }
+                
+                *pstrUndefs = str_append(*pstrUndefs, "#undef ");
+                *pstrUndefs = str_append(*pstrUndefs, token);
+                *pstrUndefs = str_append(*pstrUndefs, "\n");
             }
         }
     }
     while (!feof(fl) && !ferror(fl));
-
+    
+    if (!close_tag_found)
+    {
+        fprintf (stderr, "Line %d: No close tag found for DEFINE section.\n", ln_count);
+        isBad = 1;
+    }
+    
     free (str);
+
     return (!isBad);
 }
 
 static char*
 parse_code(FILE* fl, int size)
 {
-    int ln_count = 0;
     char* str = NULL;
     int isBad = 0;
     char* text = NULL;
@@ -1958,12 +2124,14 @@ parse_code(FILE* fl, int size)
     text = strdup ("");
     str = alloc_mem_for_string (str, size + 1);
 
+    int close_tag_found = 0;
     do
     {
         fgets_and_skip_comments (str, size, fl, &ln_count);
 
         if (t2c_parse_close_tag(str, bl_tag[IBL_CODE]))
         {
+            close_tag_found = 1;
             break;
         }
         else
@@ -1972,20 +2140,27 @@ parse_code(FILE* fl, int size)
         }
     }
     while (!feof(fl) && !ferror(fl));
+    
+    if (!close_tag_found)
+    {
+        fprintf (stderr, "Line %d: No close tag found for CODE section.\n", ln_count);
+        isBad = 1;
+    }
 
     free(str);
+    
     if (isBad)
     {
         free (text);
         return NULL;
     }
+    
     return text;
 }
 
 static char*
 parse_finally (FILE* fl, int size)
 {
-    int ln_count = 0;
     char* str = NULL;
     int isBad = 0;
     char* text = NULL;
@@ -2002,13 +2177,15 @@ parse_finally (FILE* fl, int size)
 
     text = strdup ("");
     str = alloc_mem_for_string (str, size + 1);
-
+    
+    int close_tag_found = 0;
     do
     {
         fgets_and_skip_comments (str, size, fl, &ln_count);
 
         if (t2c_parse_close_tag(str, bl_tag[IBL_FINALLY]))
         {
+            close_tag_found = 1;
             break;
         }
         else
@@ -2017,8 +2194,14 @@ parse_finally (FILE* fl, int size)
         }
     }
     while (!feof(fl) && !ferror(fl));
+    if (!close_tag_found)
+    {
+        fprintf (stderr, "Line %d: No close tag found for FINALLY section.\n", ln_count);
+        isBad = 1;
+    }
 
     free(str);
+    
     if (isBad)
     {
         free (text);
@@ -2030,21 +2213,18 @@ parse_finally (FILE* fl, int size)
 static char*
 parse_purpose(FILE* fl, int size, const char* templ, const char* finally_code, int* purposes_number)
 {
-    int ln_count = 0;
     char* str = NULL;
     char* str_t = NULL;
     int isBad = 0;
     char* text = NULL;
-    char* toComment = NULL;
     int i = 0;
+    int	j;
+    char *warning_text = NULL;           
+	TPurpose *purpose = NULL;
 
-    char* params[MAX_PARAMS_NUM];    
-    int nParams = 0;                
-
-    for (i = 0; i < MAX_PARAMS_NUM; ++i)
-    {
-        params[i] = NULL;
-    }
+	purpose = (TPurpose *)alloc_mem (purpose, 2, sizeof (TPurpose));
+	purpose->nLines = 0;
+	warning_text = alloc_mem_for_string (warning_text, MAX_STRING_LEGTH);
 
     if (!fl)
     {
@@ -2056,43 +2236,44 @@ parse_purpose(FILE* fl, int size, const char* templ, const char* finally_code, i
         return NULL;
     }
 
-    ++(*purposes_number);    /* another purpose */
-
-    text = strdup("");
-    toComment = strdup("");
     str = alloc_mem_for_string(str, size + 1);
     
+    int close_tag_found = 0;
     do
     {
         fgets_and_skip_comments(str, size, fl, &ln_count);
-
+        
         if (t2c_parse_close_tag(str, bl_tag[IBL_PURPOSE]))
         {
-            char strTmp[16] = "";
-
-            /* fill in the gaps in the template */
+            close_tag_found = 1;
             free(text);
             text = strdup(templ);
-            if (nParams == 0)
+            if (purpose->nLines == 0)
             {
-                toComment = str_append(toComment, "//    none\n");
+			    ++(*purposes_number);   
+	            text = replace_all_substr_in_string(text, "<%params%>", "//    none\n");
+	            sprintf(str, "%d", *purposes_number);
+    	        text = replace_all_substr_in_string(text, tags[PURPNUM_TAG_POS], str);
+	            text = replace_all_substr_in_string(text, TAG_FINALLY_NAME, finally_code);
+    	        break;
             }
             
-            text = replace_all_substr_in_string(text, "<%params%>", toComment);
-            
-            sprintf(strTmp, "%d", *purposes_number);
-            text = replace_all_substr_in_string(text, tags[PURPNUM_TAG_POS], strTmp);
-            
-            text = replace_all_substr_in_string(text, TAG_FINALLY_NAME, finally_code);
-            
-            /* param values */
+			char 	*text1 = NULL;
+			int 	*purp_num = NULL;
+			long 	*purp_array = NULL;
 
-            for (i = 0; i < nParams; ++i)
-            {
-                sprintf (strTmp, "<%%%d%%>", i);
-                text = replace_all_substr_in_string(text, strTmp, params[i]);
-            }
+			purp_array = alloc_mem (purp_array, MAX_LINES, sizeof (long));
+			purp_num = alloc_mem (purp_num, 2, sizeof (int));
+			*purp_num = 1;
+			text1 = strdup (text);
+	
+			parameter_and_text_generator (purpose, &text, text1, finally_code, purp_array, *purposes_number, 0, purp_num);
 
+			*purposes_number += *purp_num - 1;	
+
+			free (text1);
+			free (purp_num);
+			free (purp_array);
             break;
         }
         else
@@ -2100,33 +2281,50 @@ parse_purpose(FILE* fl, int size, const char* templ, const char* finally_code, i
             str_t = trim_with_nl (str);
             if (strlen(str_t) > 0)
             {
-                if (nParams >= MAX_PARAMS_NUM)
+                if (purpose->nLines >= MAX_PARAMS_NUM)
                 {
                     isBad = 1;
-                    fprintf (stderr, "Too many parameters are specified for the test purpose.\n");
+                    fprintf (stderr, "Line %d: Too many parameters are specified for the test purpose.\n",
+                        ln_count);
                     break;
                 }
 
-                /* found another parameter */
-                params[nParams] = strdup(str_t);
-                ++nParams;
+				purpose->Lines[purpose->nLines] = NULL;
+                purpose->Lines[purpose->nLines] = (TLine *)alloc_mem (purpose->Lines[purpose->nLines], 2, sizeof (TLine));
+                parse_purpose_line (str_t, purpose->Lines[purpose->nLines], &warning_text);                
+                purpose->nLines++;
 
-                toComment = str_append(toComment, "//    ");
-                toComment = str_append(toComment, str_t);
-                toComment = str_append(toComment, "\n");
+                if (strcmp (warning_text, WARNING_OK) != 0)
+                {
+                	fprintf (stderr, "Line %d: %s", ln_count, WARNING_PREFIX);
+                	fprintf (stderr, "%s\n", warning_text);
+                }
             }
         }
     }
     while (!feof(fl) && !ferror(fl));
+    
+    if (!close_tag_found)
+    {
+        fprintf (stderr, "Line %d: No close tag found for PURPOSE section.\n", ln_count);
+        isBad = 1;
+    }
 
     free(str);
-    free(toComment);
-    
-    for (i = 0; i < nParams; ++i)
+    free(warning_text);
+    for (i = 0; i < purpose->nLines; i++)    
     {
-        free(params[i]);
+    	for (j = 0; j < purpose->Lines[i]->nComponents; j++)
+    	{
+    		if (purpose->Lines[i]->Components[j]->Type == COMPONENT_TYPE_STRING)
+    		{
+    			free (purpose->Lines[i]->Components[j]->str);
+    		}
+    		free (purpose->Lines[i]->Components[j]);
+    	}
+    	free (purpose->Lines[i]);
     }
-    
+    free (purpose);
     if (isBad)
     {
         free(text);
@@ -2170,22 +2368,46 @@ static void
 gen_common_makefile (const char* suite_root_path, const char* output_dir_path)
 {
     char* common_mk_path = NULL;
-    char* common_dbg_mk_path = NULL;
+    char* common_mk_data = NULL;
     char* main_mk_path = NULL;
     
     char* path1 = NULL;
     char* path2 = NULL;
 
-    char* inc   = "$(T2C_ROOT)/t2c/include";
-    char* lib   = "$(T2C_ROOT)/t2c/lib";
-    char* inc_d = "$(T2C_ROOT)/t2c/debug/include";
-    char* lib_d = "$(T2C_ROOT)/t2c/debug/lib";
-    
-    char* tmp_incl = "/include";
-    
     char* suite_inc = NULL;
+    
+    char* tmk_path  = NULL;
+    char* tpl_path1 = NULL;
+    char* tpl_path2 = NULL;
 
-    FILE* mf;   // common.mk
+    tpl_path1 = alloc_mem_for_string(tpl_path1, strlen(t2c_root)); 
+    tpl_path1 = str_append(tpl_path1, t2c_root);
+    tpl_path2 = concat_paths(tpl_path1, COMMON_TPL_DIR);
+    tmk_path = concat_paths(tpl_path2,  COMMON_MAKEFILE_TPL);
+    
+    // Load the template for common.mk first
+    FILE* tmk = open_file(tmk_path, "r", NULL);
+    if (!tmk)
+    {
+        fprintf(stderr, "Unable to open file: %s\n", tmk_path);
+        free(tpl_path1);
+        free(tpl_path2);
+        free(tmk_path);
+        return;
+    }
+    
+    common_mk_data = read_file_to_string(tmk);
+    if (!common_mk_data)
+    {
+        fprintf(stderr, "Unable to read from file: %s\n", tmk_path);
+        free(tpl_path1);
+        free(tpl_path2);
+        free(tmk_path);
+        return;
+    }
+    fclose(tmk);
+    
+    FILE* mf = NULL;   // common.mk
 
     common_mk_path = str_sum(output_dir_path, "common.mk");
         
@@ -2194,50 +2416,60 @@ gen_common_makefile (const char* suite_root_path, const char* output_dir_path)
     if (!mf)
     {
         free (common_mk_path);
+        free(tpl_path1);
+        free(tpl_path2);
+        free(tmk_path);
         fprintf(stderr, "Unable to create common makefile in %s\n", output_dir_path);
         return;
     }
 
-    fprintf (mf, "TEST_CC = %s\n\n", cfg_parm_values[CFG_COMPILER_POS]);
+    common_mk_data = replace_all_substr_in_string(
+        common_mk_data, 
+        common_mk_params[CMK_DIR_PATH_POS],
+        test_dir);
+    
+    common_mk_data = replace_all_substr_in_string(
+        common_mk_data, 
+        common_mk_params[CMK_COMPILER_POS],
+        cfg_parm_values[CFG_COMPILER_POS]);
+    
+    common_mk_data = replace_all_substr_in_string(
+        common_mk_data, 
+        common_mk_params[CMK_ADD_CFLAGS_POS],
+        cfg_parm_values[CFG_COMP_FLAGS_POS]);
 
-    fprintf (mf, "TET_INC_DIR = $(TET_ROOT)/inc/tet3\n");
-    fprintf (mf, "TET_LIB_DIR = $(TET_ROOT)/lib/tet3\n\n");
-    
-    fprintf(mf, "DBG_INC_DIR = %s\n", inc_d);
-    fprintf(mf, "DBG_LIB_DIR = %s\n\n", lib_d);
-    
-    path1 = strdup("$(T2C_SUITE_ROOT)");
-    
-    path2 = concat_paths(path1, (char*)test_dir);
-    suite_inc = concat_paths(path2, tmp_incl);
+    common_mk_data = replace_all_substr_in_string(
+        common_mk_data, 
+        common_mk_params[CMK_ADD_LFLAGS_POS],
+        cfg_parm_values[CFG_LINK_FLAGS_POS]);
 
-    fprintf(mf, "T2C_INC_DIR = %s\n", inc);
-    fprintf(mf, "T2C_LIB_DIR = %s\n", lib);
-    fprintf(mf, "SUITE_INC_DIR = %s\n\n", suite_inc);
-    
-    fprintf(mf, "CC_SPECIAL_FLAGS := $(shell (cat $(T2C_SUITE_ROOT)/cc_special_flags) 2>/dev/null)\n");
-    fprintf(mf, "TEST_COMMON_CFLAGS = -I$(T2C_INC_DIR) -I$(SUITE_INC_DIR) $(CC_SPECIAL_FLAGS)\n\n");
-    
-    fprintf(mf, "TEST_ADD_CFLAGS = %s\n", cfg_parm_values[CFG_COMP_FLAGS_POS]); 
-    fprintf(mf, "TEST_ADD_LFLAGS = %s\n\n", cfg_parm_values[CFG_LINK_FLAGS_POS]); 
-    
-    fprintf(mf, "TEST_STD_CFLAGS =%s\n", (bGenCpp ? " " : " -D\"_POSIX_C_SOURCE=200112L\" -std=c99"));
-    fprintf(mf, "TEST_FILE_EXT =%s\n", (bGenCpp ? "cpp" : "c"));
-        
-    fprintf(mf, "TEST_CFLAGS = $(TEST_COMMON_CFLAGS) -I$(TET_INC_DIR) %s $(TEST_ADD_CFLAGS)\n",
+    common_mk_data = replace_all_substr_in_string(
+        common_mk_data, 
+        common_mk_params[CMK_TEST_STD_FLAGS_POS],
+        (bGenCpp ? "TEST_STD_CFLAGS_CPP" : "TEST_STD_CFLAGS_C"));
+
+    common_mk_data = replace_all_substr_in_string(
+        common_mk_data, 
+        common_mk_params[CMK_TEST_FILE_EXT_POS],
+        (bGenCpp ? "cpp" : "c"));
+
+    common_mk_data = replace_all_substr_in_string(
+        common_mk_data, 
+        common_mk_params[CMK_SP_FLAG_POS],
         (bSingleProcess ? "-DT2C_SINGLE_PROCESS" : ""));
-    fprintf(mf, "DBG_CFLAGS = -DT2C_DEBUG $(TEST_COMMON_CFLAGS) -I$(DBG_INC_DIR) $(TEST_ADD_CFLAGS)\n\n");
     
-    fprintf(mf, "TEST_LFLAGS = $(TEST_ADD_LFLAGS)\n");
-    fprintf(mf, "DBG_LFLAGS = $(TEST_ADD_LFLAGS)\n\n");
-    
-    fprintf(mf, "TEST_LIBS = $(TET_LIB_DIR)/tcm.o $(TET_LIB_DIR)/libapi.a $(T2C_LIB_DIR)/t2c_util.a\n");
-    fprintf(mf, "DBG_LIBS = $(DBG_LIB_DIR)/dbgm.o $(DBG_LIB_DIR)/t2c_util_d.a\n\n");
-    
+    fputs(common_mk_data, mf);
+       
     free(common_mk_path);
+    free(common_mk_data);
     fclose(mf);
     
-    /* Generate main makefile (it will invoke makefiles in each subdir). */
+    free(tpl_path1);
+    free(tpl_path2);
+    free(tmk_path);
+
+    //------------------------------------------------------------------
+    // Generate main makefile (it will invoke makefiles in each subdir).
     main_mk_path = str_sum (output_dir_path, "Makefile");
 
     mf = open_file (main_mk_path, "w", NULL);
@@ -2252,11 +2484,12 @@ gen_common_makefile (const char* suite_root_path, const char* output_dir_path)
         return;
     }
 
-    fprintf (mf, "EXCLUDE = Makefile common.mk \n\n");
+    fprintf (mf, "EXCLUDE = Makefile common.mk objs\n\n");
 
     fprintf (mf, "SUBDIRS := $(filter-out $(EXCLUDE), $(wildcard *))\n");
     fprintf (mf, "BUILDDIRS = $(SUBDIRS)\n");
-    fprintf (mf, "CLEANDIRS = $(addprefix _clean_,$(SUBDIRS))\n\n");
+    fprintf (mf, "CLEANDIRS = $(addprefix _clean_,$(SUBDIRS))\n");
+    fprintf (mf, "STB_DIRS = $(addprefix _stb_,$(SUBDIRS)) \n\n");
 
     fprintf (mf, "all:    $(BUILDDIRS)\n\n");
 
@@ -2264,11 +2497,14 @@ gen_common_makefile (const char* suite_root_path, const char* output_dir_path)
     fprintf (mf, "\t$(MAKE) -C $@\n\n");
 
     fprintf (mf, "clean: $(CLEANDIRS)\n\n");
-
     fprintf (mf, "$(CLEANDIRS):\n");
     fprintf (mf, "\t$(MAKE) -C $(subst _clean_,,$@) clean\n\n");
+    
+    fprintf (mf, "standalone: $(STB_DIRS)\n\n");    
+    fprintf (mf, "$(STB_DIRS):\n");
+    fprintf (mf, "\t$(MAKE) -C $(subst _stb_,,$@) debug\n\n");
 
-    fprintf (mf, ".PHONY:    all $(BUILDDIRS) $(CLEANDIRS) clean\n\n");
+    fprintf (mf, ".PHONY:    all $(BUILDDIRS) $(CLEANDIRS) clean standalone $(STB_DIRS)\n\n");
 
     free (main_mk_path);
 

@@ -78,9 +78,12 @@
 #include <errno.h>
 #include <unistd.h>
 
+#include <t2c_tet_support.h>
 #include <t2c.h>
 
-#if defined(T2C_DEBUG) || defined(T2C_SINGLE_PROCESS)
+#if defined(T2C_SEPARATE_PROCESSES)
+#define t2c_fork_impl t2c_fork
+#elif defined(T2C_DEBUG) || defined(T2C_SINGLE_PROCESS)
 #define t2c_fork_impl t2c_fork_dbg
 #else
 #define t2c_fork_impl t2c_fork
@@ -96,7 +99,7 @@ int bVerbose = FALSE;
 const char* test_name_      = "<%object_name%>";
 const char* suite_subdir_   = "<%suite_subdir%>";
 
-// List of requirement catalogues to be loaded
+// List of requirement catalogs to be loaded
 const char* rcat_names_[] = {
     "<%object_name%>",
 <%rcat_names%>    NULL
@@ -231,12 +234,12 @@ startup_func()
         bVerbose = TRUE;
     }
     
-    // Load requirement catalogues.
+    // Load requirement catalogs.
 #ifndef T2C_IGNORE_RCAT_ERRORS
     int bOK = t2c_rcat_load(rcat_names_, suite_subdir_, &head_, &reqs_, &nreq_);
     if (!bOK)
     {
-        INIT_FAILED("<%object_name%>: unable to load req catalogue.");
+        INIT_FAILED("<%object_name%>: unable to load req catalog.");
     }
 #else
     t2c_rcat_load(rcat_names_, suite_subdir_, &head_, &reqs_, &nreq_);
@@ -254,7 +257,7 @@ startup_func()
     free(href_root);
     free(stmp);
 
-    // Sort the catalogue by ID. (No-op if reqs == NULL.)
+    // Sort the catalog by ID. (No-op if reqs == NULL.)
     t2c_rcat_sort(reqs_, nreq_);
     
     int pcc_res = pipe(pcc_pipe_);
