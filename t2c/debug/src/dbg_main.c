@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "../include/tet_api.h"
 
@@ -42,7 +43,7 @@ char** comment;
 // Total number of test purposes.
 size_t tp_count = 0;
 
-// A pipe that will be useâ to transfer the result code.
+// A pipe that will be used to transfer the result code.
 int rc_pipe[2];
 
 /////////////////////////////////////////////////////////////////////////////
@@ -202,13 +203,13 @@ main(int argc, char* argv[])
         if ((ic_num == -1) || (ic_num == tet_testlist[i].icref))
         {
             found = 1;
-            fprintf(stderr, "TP #%d begins\n", tet_thistest);
+            printf("TP #%d begins\n", tet_thistest);
             
             dbg_reset_result();
 
             if (tet_testlist[i].testfunc == NULL)
             {
-                fprintf(stderr, "The test purpose has been canceled. Reason:\n%s\n", 
+                printf("The test has been canceled. Reason:\n%s\n", 
                     comment[i]);
                 tet_result(TET_UNINITIATED);
             }
@@ -223,7 +224,7 @@ main(int argc, char* argv[])
                             
             if (dbg_result == -1) dbg_result = TET_NORESULT;
 
-            fprintf(stderr, "TP #%d ends. Result: %s\n\n", tet_thistest, 
+            printf("TP #%d ends. Result: %s\n\n", tet_thistest, 
                 dbg_get_result_string(dbg_result));
         }
     }
@@ -282,7 +283,7 @@ tet_getvar(char* name)
     }
 }
 
-void 
+/*void 
 tet_infoline(char* line)
 {
     fprintf(stderr, "%s\n", line);
@@ -294,13 +295,14 @@ tet_printf(char* format, ...)
 {
     // Does nothing.
     return 0;
-}
+}*/
 
 int 
 tet_vprintf(char* format, va_list ap)
 {
-    // Does nothing.
-    return 0;
+    int res = vprintf(format, ap);
+    printf("\n");
+    return res;
 }
 
 void 

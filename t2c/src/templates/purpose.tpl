@@ -3,6 +3,7 @@
 static void test_purpose_<%purpose_number%>()
 {
 <%define%>
+    int tp_in_finally = 0;
     T2C_PUT_STATUS(FALSE);
 
     test_passed_flag = TRUE;          
@@ -19,10 +20,9 @@ static void test_purpose_<%purpose_number%>()
 
 <%code%>
 BEGIN_FINALLY_SECTION
+    tp_in_finally = 1;
 <%finally%>
 END_FINALLY_SECTION
-    T2C_RESET_STATUS(test_passed_flag);
-    return;
-        
+    TP_RETURN;
 <%undef%>
 }

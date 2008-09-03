@@ -1,11 +1,23 @@
-dd.mm.2008 v.1.x.y
+03.09.2008 v.1.3 
 In this version:
 
-- Fixed: g++ 4.3 issued warnings concerning deprecated string to char* conversion 
-when TET functions were used.
-- Fixed: a problem of invalid messages written to the journal for uninitiated tests. 
-The "reason" string passed to tet_delete() should remain unchanged until tet_cleanup()
-is called, because TET does not copy it, it just stores a pointer to this string.
+- Revisited REQ, ABORT_xxx and RETURN macros to make it possible to use them in FINALLY section.
+- Added ABORT_UNTESTED macro.
+- Revisited the functions that output checked req IDs to handle long lists of IDs properly.
+- Added support for #-comments after the parameters' values in a <PURPOSE> section.
+- Reorganized support library: there are now 2 parts of it, one of which depends on TET while the other does not.
+- common.mk is now generated using an external template (src/templates/common.tmk)
+- It is safe now to use ABORT_xxx() and RETURN macros in <FINALLY> section, the tests no longer hang in this case. 
+
+07.05.2008 v.1.2 beta 1
+In this version:
+
+- Added support for sets of parameters' values in <PURPOSE> sections.
+- Line number in a T2C file is now reported when the code generator detects a syntax error in the file.
+- Fixed: several deficiencies concerning the processing of invalid T2C files.
+- Fixed: g++ 4.3 issued warnings concerning deprecated string to char* conversion when TET functions were used.
+- Fixed: a problem of invalid messages written to the journal for uninitiated tests. The "reason" string passed to tet_delete() should remain unchanged until tet_cleanup() is called, because TET does not copy it, it just stores a pointer to this string.
+- Fixed: multiline text of a requirement was not loaded correctly from the catalog (only the 1st line was loaded).
 
 -------------------------------------------------------------------------------
 

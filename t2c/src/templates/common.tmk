@@ -1,0 +1,32 @@
+TEST_CC = <%compiler%>
+
+TET_INC_DIR = "$(TET_ROOT)/inc/tet3"
+TET_LIB_DIR = "$(TET_ROOT)/lib/tet3"
+
+DBG_INC_DIR =  "$(T2C_ROOT)/t2c/debug/include"
+DBG_LIB_DIR =  "$(T2C_ROOT)/t2c/debug/lib"
+
+T2C_INC_DIR = "$(T2C_ROOT)/t2c/include"
+T2C_LIB_DIR = "$(T2C_ROOT)/t2c/lib"
+SUITE_INC_DIR = "$(T2C_SUITE_ROOT)/<%test_dir%>/include"
+
+CC_SPECIAL_FLAGS := $(shell (cat $(T2C_SUITE_ROOT)/cc_special_flags) 2>/dev/null)
+TEST_COMMON_CFLAGS = -I$(T2C_INC_DIR) -I$(SUITE_INC_DIR) $(CC_SPECIAL_FLAGS)
+
+TEST_ADD_CFLAGS = <%add_cflags%>
+TEST_ADD_LFLAGS = <%add_lflags%>
+
+TEST_STD_CFLAGS_C = -std=c99 -D"_POSIX_C_SOURCE=200112L"
+TEST_STD_CFLAGS_CPP = 
+TEST_STD_CFLAGS = $(<%test_std_cflags%>)
+
+TEST_FILE_EXT = <%test_file_ext%>
+TEST_CFLAGS = $(TEST_COMMON_CFLAGS) -I$(TET_INC_DIR) -I$(T2C_INC_DIR) <%single_process_flag%> $(TEST_ADD_CFLAGS)
+DBG_CFLAGS = -DT2C_DEBUG $(TEST_COMMON_CFLAGS) -I$(DBG_INC_DIR) $(TEST_ADD_CFLAGS)
+
+TEST_LFLAGS = $(TEST_ADD_LFLAGS)
+DBG_LFLAGS = $(TEST_ADD_LFLAGS)
+
+TEST_LIBS = $(TET_LIB_DIR)/tcm.o $(TET_LIB_DIR)/libapi.a $(T2C_LIB_DIR)/t2c_util.a $(T2C_LIB_DIR)/t2c_tet_support.a
+DBG_LIBS = $(DBG_LIB_DIR)/dbgm.o $(DBG_LIB_DIR)/t2c_util_d.a $(DBG_LIB_DIR)/t2c_tet_support_d.a
+

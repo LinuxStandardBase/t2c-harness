@@ -11,6 +11,3 @@ rm -rf ${T2C_ROOT}/t2c/cc_special_flags
 # Clean T2C code generator.
 cd ${T2C_ROOT}/t2c/src
 make clean
-
-cd ${T2C_ROOT}/t2c/debug/src
-make clean

@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include <stdarg.h>
+
 // Standard result codes - may be passed to tet_result() 
 #define TET_PASS        0
 #define TET_FAIL        1
@@ -23,26 +25,25 @@ tet_delete(int testno, char* reason);
 char* 
 tet_getvar(char* name);
 
-// Outputs a line to stderr.
-void 
-tet_infoline(char* line);
+// Outputs a line to stdout.
+//void tet_infoline(char* line);
+#define tet_infoline(line) printf("%s\n", line)
 
 // Does nothing.
 void 
 tet_setcontext();
 
+// Does nothing.
 void 
 tet_setblock();
 
-// Does nothing in this case. Use TRACE with the verbose mode on for 
-// message output.
-int 
-tet_printf(char* format, ...);
+// Same as printf
+//int tet_printf(char* format, ...);
+#define tet_printf printf
 
-// Does nothing in this case. Use TRACE with the verbose mode on for 
-// message output.
-int 
-tet_vprintf(char* format, va_list ap);
+// Same as vprintf but adds a newline
+int tet_vprintf(char* format, va_list ap);
+//#define tet_vprintf(format, ap) {vprintf(format, ap); printf("\n");}
 
 void 
 tet_result(int result);
