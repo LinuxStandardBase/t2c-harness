@@ -70,10 +70,15 @@ echo $CC_SPECIAL_FLAGS > $T2C_ROOT/t2c/cc_special_flags
 cd ${T2C_ROOT}/t2c/src
 make
 
-if [ ! -x ${T2C_ROOT}/t2c/bin/t2c ]
-then
-        echo "Failed to build t2c, aborting..."
-        exit 1
+if [ $? -ne 0 ]; then 
+    echo "Failed to build t2c, aborting..."
+    exit 1
+fi
+
+# a control check, just in case
+if [ ! -x ${T2C_ROOT}/t2c/bin/t2c ]; then
+    echo "ERROR: t2c executable is not found after build, aborting..."
+    exit 1
 fi 
 
 # Done

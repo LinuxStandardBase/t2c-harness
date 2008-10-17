@@ -237,9 +237,13 @@ startup_func()
     // Load requirement catalogs.
 #ifndef T2C_IGNORE_RCAT_ERRORS
     int bOK = t2c_rcat_load(rcat_names_, suite_subdir_, &head_, &reqs_, &nreq_);
-    if (!bOK)
+    if (bOK == T2C_RCAT_BAD_RCAT)
     {
         INIT_FAILED("<%object_name%>: unable to load req catalog.");
+    }
+    else if (bOK == T2C_RCAT_NO_RCAT)
+    {
+        fprintf(stderr, "None of the files containing requirement catalogs could be opened.\n");
     }
 #else
     t2c_rcat_load(rcat_names_, suite_subdir_, &head_, &reqs_, &nreq_);

@@ -945,7 +945,7 @@ t2c_rcat_sort(TReqInfoPtr reqs[], int nreq)
     return;
 }
 
-int 
+ERcatLoadCode 
 t2c_rcat_load(const char* rcat_names[], const char* suite_subdir, 
     TReqInfoList** phead, TReqInfoPtr** preqs, int* nreq)
 {
@@ -953,20 +953,20 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
     if (!phead || !preqs || !nreq || !rcat_names ||!suite_subdir) 
     {
         fprintf(stderr, "t2c_rcat_load(): invalid parameters passed\n");
-        return 0;
+        exit(1);
     }
     
     if (rcat_names[0] == NULL)
     {
         fprintf(stderr, "t2c_rcat_load(): the list of req catalogs is empty\n");
-        return 0;
+        exit(1);
     }
     
     *phead = t2c_req_info_list_append(NULL, "", "");    // create a head of the list.
     if (*phead == NULL)
     {
         fprintf(stderr, "t2c_rcat_load(): unable to initialize requirement list.\n");
-        return 0;
+        return T2C_RCAT_BAD_RCAT;
     }
     
     // Walk the list of names and load appropriate req catalogs
@@ -978,20 +978,25 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
         FILE* fd = fopen(rcpath, "r");
         if (!fd)
         {
-            fprintf(stderr, "Unable to open file %s\n", rcpath);
+            //fprintf(stderr, "Unable to open file %s\n", rcpath);
             free(rcpath);
             continue;
         }
         
         found = 1;  // a file has been found and opened.
         fprintf(stderr, "Loading requirement catalog: %s\n", rcpath);
-        bOK = t2c_rcat_load_impl(fd, &tail);
-        if (!bOK)
+        int iret = t2c_rcat_load_impl(fd, &tail);
+        if (!iret)
         {
+            bOK = T2C_RCAT_BAD_RCAT;
             fprintf(stderr, "Invalid requirement catalog: %s\n", rcpath);
             free(rcpath);
             fclose(fd);    
             break;
+        }
+        else
+        {
+            bOK = T2C_RCAT_LOAD_OK;
         }
         
         free(rcpath);
@@ -1000,16 +1005,16 @@ t2c_rcat_load(const char* rcat_names[], const char* suite_subdir,
     
     if (!found)
     {
-        bOK = 0;
-        fprintf(stderr, "None of the files containing requirement catalogs could be opened.\n");
+        bOK = T2C_RCAT_NO_RCAT;
+//        fprintf(stderr, "None of the files containing requirement catalogs could be opened.\n");
     }
     
-    if (bOK)
+    if (bOK == T2C_RCAT_LOAD_OK)
     {
         *preqs = t2c_req_info_list_to_array(*phead, nreq);
         if (!(*preqs))
         {
-            bOK = 0;
+            bOK = T2C_RCAT_BAD_RCAT;
             fprintf(stderr, "Unable to create the requirement list.\n");
         }
     }
