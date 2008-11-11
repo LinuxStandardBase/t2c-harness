@@ -153,16 +153,24 @@ t2c_unreplace_special_chars(char* str);
 // Load the REQ catalogues with names specified in NULL-terminated 'rcat_names' array.
 // The catalogue #i is expected to be in the following file
 //      $T2C_SUITE_ROOT/<suite_subdir>/reqs/<rcat_names[i]>.xml
-// The function returns 0 if no catalogues from the list can be loaded (i.e. files not
-// found) or some of them are corrupt. Otherwise nonzero is returned.
+// The function returns T2C_RCAT_NO_RCAT if no catalogues from the list can be 
+// found, T2C_RCAT_BAD_RCAT if some of them are corrupt or some unexpected error occurs. 
+// Otherwise the catalogues will be loaded and T2C_RCAT_LOAD_OK will be returned.
 // 
-// The catalogue shall be stored as a list of TReqInfo structures,
+// The catalogue will be stored as a list of TReqInfo structures,
 // the head of the list shall be returned in *phead. 
 // Use t2c_req_info_list_clear(*phead) to deallocate the catalogue.
 // The pointers to these TReqInfo structures are also stored in the (*preqs)[] array for
 // future sorting & searching. Number of the elements in the array shall be returned in
 // *nreq.
-int 
+typedef enum
+{
+    T2C_RCAT_BAD_RCAT = 0,
+    T2C_RCAT_LOAD_OK  = 1,
+    T2C_RCAT_NO_RCAT  = 2
+} ERcatLoadCode;
+
+ERcatLoadCode 
 t2c_rcat_load(const char* rcat_names[], const char* suite_subdir, 
     TReqInfoList** phead, TReqInfoPtr** preqs, int* nreq);
 

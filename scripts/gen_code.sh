@@ -1,13 +1,19 @@
 #!/bin/sh
 
-# This script builds the T2C code generator and uses it
-# to create the C-code of the tests without building them.
-
+# This script uses the T2C code generator to create the sources of the tests without building them.
 if [ -z ${T2C_ROOT} ]
 then
         echo "Error: T2C_ROOT is not defined."
 		echo "The environment variable T2C_ROOT should contain a path to the main directory of T2C Framework."
 		exit 1
+fi
+
+# if an argument is specified, it will be considered as regexp: only the subsuites 
+# that match it will be built
+if [ -z "$1" ]; then
+    SUITE_EXPR="t2c"
+else
+    SUITE_EXPR="$1"
 fi
 
 # Get the directory where this script resides.
@@ -105,33 +111,50 @@ echo $CC_SPECIAL_FLAGS > $T2C_SUITE_ROOT/cc_special_flags
 cd ${T2C_SUITE_ROOT}
 export PATH=${T2C_ROOT}/t2c/bin:$PATH
 
-# Remove the old TET scenario file.
+# Remove the old TET scenario files.
 rm -f ${T2C_SUITE_ROOT}/tet_scen
+rm -f ${T2C_SUITE_ROOT}/real_tet_scen
+
+# Remove the old list of subsuites that failed to build
+rm -f ${T2C_SUITE_ROOT}/failed_to_build.list
 
 # Build all test suites
 for TEST_SUITE in *-t2c
 do
-    if [ -d ${TEST_SUITE} ]
-    then
-        echo   "----------------------"
-        printf "Generating C code for $TEST_SUITE\n"
-
-        # Generate tests for ${TEST_SUITE}
-        cd ${T2C_SUITE_ROOT}/${TEST_SUITE}
-        chmod a+x gen_tests clean
-        ./gen_tests
-
-        if [ $? -ne 0 ]
+    echo "$TEST_SUITE" | grep $SUITE_EXPR > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+    
+        BUILD_FAILED=""
+        if [ -d ${TEST_SUITE} ]
         then
-            printf "Failed to generate C code for ${TEST_SUITE}, aborting...\n"
-            exit 1
-        fi 
+            echo   "----------------------"
+            printf "Generating test sources for $TEST_SUITE\n"
 
-        cd ${T2C_SUITE_ROOT}
+            # Generate tests for ${TEST_SUITE}
+            cd ${T2C_SUITE_ROOT}/${TEST_SUITE}
+            chmod a+x gen_tests clean
+            ./gen_tests
+
+            if [ $? -ne 0 ]
+            then
+                printf "Failed to generate test sources for ${TEST_SUITE}\n"
+                BUILD_FAILED="yes"
+            fi 
+
+            cd ${T2C_SUITE_ROOT}
+            if [ ! -z "${BUILD_FAILED}" ]; then
+                echo "${TEST_SUITE}" >> ${T2C_SUITE_ROOT}/failed_to_build.list
+            fi
+        fi 
     fi 
 done
+rm -f ${T2C_SUITE_ROOT}/tet_scen
 
 # Done
 echo
-echo Code generation completed successfully
+echo Code generation completed.
+if [ -f "${T2C_SUITE_ROOT}/failed_to_build.list" ]; then
+    echo Code generation failed for the following subsuites:
+    cat ${T2C_SUITE_ROOT}/failed_to_build.list
+fi
 

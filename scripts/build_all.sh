@@ -3,8 +3,16 @@
 if [ -z ${T2C_ROOT} ]
 then
         echo "Error: T2C_ROOT is not defined."
-		echo "The environment variable T2C_ROOT should contain a path to the main directory of T2C Framework."
-		exit 1
+        echo "The environment variable T2C_ROOT should contain a path to the main directory of T2C Framework."
+        exit 1
+fi
+
+# if an argument is specified, it will be considered as regexp: only the subsuites 
+# that match it will be built
+if [ -z "$1" ]; then
+    SUITE_EXPR="t2c"
+else
+    SUITE_EXPR="$1"
 fi
 
 # Get the directory where this script resides.
@@ -15,17 +23,17 @@ export T2C_SUITE_ROOT
 # Default paths for LSB 
 if [ -z ${LSB_ROOT} ]
 then
-	export LSB_ROOT=/opt/lsb
+    export LSB_ROOT=/opt/lsb
 fi
 
 if [ -z ${LSB_LIB_DIR} ]
 then
-	if [ -d "${LSB_ROOT}/lib64" ]; then
-		LSB_LIB_DIR=${LSB_ROOT}/lib64
-	else
-		LSB_LIB_DIR=${LSB_ROOT}/lib
-	fi
-	export LSB_LIB_DIR
+    if [ -d "${LSB_ROOT}/lib64" ]; then
+        LSB_LIB_DIR=${LSB_ROOT}/lib64
+    else
+        LSB_LIB_DIR=${LSB_ROOT}/lib
+    fi
+    export LSB_LIB_DIR
 fi
 
 echo "LSB_ROOT is ${LSB_ROOT}, LSB_LIB_DIR is ${LSB_LIB_DIR}"
@@ -102,51 +110,76 @@ echo $CC_SPECIAL_FLAGS > $T2C_SUITE_ROOT/cc_special_flags
 cd ${T2C_SUITE_ROOT}
 export PATH=${T2C_ROOT}/t2c/bin:$PATH
 
-# Remove the old TET scenario file.
+# Remove the old TET scenario files.
 rm -f ${T2C_SUITE_ROOT}/tet_scen
+rm -f ${T2C_SUITE_ROOT}/real_tet_scen
+
+# Remove the old list of subsuites that failed to build
+rm -f ${T2C_SUITE_ROOT}/failed_to_build.list
+
+echo "all" >> ${T2C_SUITE_ROOT}/real_tet_scen
 
 # Build all test suites
 for TEST_SUITE in *-t2c
 do
-    if [ -d ${TEST_SUITE} ]
-    then
-        echo   "----------------------"
-        printf "Building $TEST_SUITE\n"
-
-        # Generate & build tests and test data for ${TEST_SUITE}
-        cd ${T2C_SUITE_ROOT}
-        if [ -d ${TEST_SUITE}/testdata/testdata_src ]
+    echo "$TEST_SUITE" | grep $SUITE_EXPR > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+    
+        BUILD_FAILED=""
+        if [ -d ${TEST_SUITE} ]
         then
-            cd ${T2C_SUITE_ROOT}/${TEST_SUITE}/testdata/testdata_src
-            make
-            if [ $? -ne 0 ]
+            echo   "----------------------"
+            printf "Building $TEST_SUITE\n"
+
+            # Generate & build tests and test data for ${TEST_SUITE}
+            cd ${T2C_SUITE_ROOT}
+            if [ -d ${TEST_SUITE}/testdata/testdata_src ]
             then
-                printf "Failed to build test data, aborting...\n"
-                exit 1
+                cd ${T2C_SUITE_ROOT}/${TEST_SUITE}/testdata/testdata_src
+                make
+                if [ $? -ne 0 ]
+                then
+                    printf "Failed to build test data\n"
+                    BUILD_FAILED="yes"
+                fi
             fi
-        fi
 
-        cd ${T2C_SUITE_ROOT}/${TEST_SUITE}
-        chmod a+x gen_tests clean
-        ./gen_tests
+            if [ -z "${BUILD_FAILED}" ]; then
 
-        if [ $? -ne 0 ]
-        then
-            printf "Failed to generate tests for ${TEST_SUITE}, aborting...\n"
-            exit 1
+                cd ${T2C_SUITE_ROOT}/${TEST_SUITE}
+                chmod a+x gen_tests clean
+                ./gen_tests
+
+                if [ $? -ne 0 ]
+                then
+                    printf "Failed to generate tests for ${TEST_SUITE}, aborting...\n"
+                    BUILD_FAILED="yes"
+                fi 
+                
+                if [ -z "${BUILD_FAILED}" ]; then
+                    cd ${T2C_SUITE_ROOT}/${TEST_SUITE}/tests
+                    make
+                    if [ $? -ne 0 ]
+                    then
+                        printf "Failed to build tests for ${TEST_SUITE}, aborting...\n"
+                        BUILD_FAILED="yes"
+                    fi
+                fi
+            fi
+
+            cd ${T2C_SUITE_ROOT}
+            if [ ! -z "${BUILD_FAILED}" ]; then
+                echo "${TEST_SUITE}" >> ${T2C_SUITE_ROOT}/failed_to_build.list
+            else
+                # fill real_tet_scen
+                echo "    :include:/${TEST_SUITE}/scenarios/func_scen" >> ${T2C_SUITE_ROOT}/real_tet_scen
+            fi
         fi 
-
-        cd ${T2C_SUITE_ROOT}/${TEST_SUITE}/tests
-        make
-        if [ $? -ne 0 ]
-        then
-            printf "Failed to build tests for ${TEST_SUITE}, aborting...\n"
-            exit 1
-        fi
-
-        cd ${T2C_SUITE_ROOT}
-    fi 
+    fi
 done
+
+rm -f ${T2C_SUITE_ROOT}/tet_scen
+mv ${T2C_SUITE_ROOT}/real_tet_scen ${T2C_SUITE_ROOT}/tet_scen
 
 # Set permissions
 chmod -R a+w ${T2C_SUITE_ROOT}
@@ -158,5 +191,12 @@ fi
 
 # Done
 echo
-echo Build completed successfully
+echo Build completed.
+
+if [ -f "${T2C_SUITE_ROOT}/failed_to_build.list" ]; then
+    echo The following subsuites failed to build:
+    cat ${T2C_SUITE_ROOT}/failed_to_build.list
+else
+    echo All subsuites are built successfully.
+fi
 

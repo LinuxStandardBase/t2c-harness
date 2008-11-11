@@ -19,7 +19,7 @@ echo TET_ROOT is ${TET_ROOT}
 
 export TET_ROOT
 export TET_PATH=$TET_ROOT
-export PATH=/opt/lsb/bin:$PATH:$TET_PATH/bin
+export PATH=/opt/lsb/bin:$PATH:$TET_PATH/bin:/sbin
 export TET_SUITE_ROOT=`pwd`
 
 export CC=lsbcc

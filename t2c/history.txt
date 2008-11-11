@@ -1,3 +1,10 @@
+17.10.2008 v.1.3.1 
+In this version:
+
+- [FIXED] Warnings concerning missing requirement catalogues are no longer emitted during test execution if T2C_IGNORE_RCAT_ERRORS preprocessor symbol is defined when building the tests. These messages were confusing the users.
+
+-------------------------------------------------------------------------------
+
 03.09.2008 v.1.3 
 In this version:
 
@@ -9,15 +16,17 @@ In this version:
 - common.mk is now generated using an external template (src/templates/common.tmk)
 - It is safe now to use ABORT_xxx() and RETURN macros in <FINALLY> section, the tests no longer hang in this case. 
 
+-------------------------------------------------------------------------------
+
 07.05.2008 v.1.2 beta 1
 In this version:
 
 - Added support for sets of parameters' values in <PURPOSE> sections.
 - Line number in a T2C file is now reported when the code generator detects a syntax error in the file.
-- Fixed: several deficiencies concerning the processing of invalid T2C files.
-- Fixed: g++ 4.3 issued warnings concerning deprecated string to char* conversion when TET functions were used.
-- Fixed: a problem of invalid messages written to the journal for uninitiated tests. The "reason" string passed to tet_delete() should remain unchanged until tet_cleanup() is called, because TET does not copy it, it just stores a pointer to this string.
-- Fixed: multiline text of a requirement was not loaded correctly from the catalog (only the 1st line was loaded).
+- [FIXED] Several deficiencies concerning the processing of invalid T2C files.
+- [FIXED] g++ 4.3 issued warnings concerning deprecated string to char* conversion when TET functions were used.
+- [FIXED] A problem of invalid messages written to the journal for uninitiated tests. The "reason" string passed to tet_delete() should remain unchanged until tet_cleanup() is called, because TET does not copy it, it just stores a pointer to this string.
+- [FIXED] Multiline text of a requirement was not loaded correctly from the catalog (only the 1st line was loaded).
 
 -------------------------------------------------------------------------------
 
