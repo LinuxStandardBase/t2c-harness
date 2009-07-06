@@ -62,6 +62,21 @@ else                                \
     reason_to_cancel = msg;         \
 }
 
+// This macro aborts test execution and sets the result of the test to 'FAIL'.
+// Usually one does not need this because test failures are detected by REQ 
+// macro. 
+// This macro is provided for those rare cases in which using REQ is
+// inconvenient or even inappropriate. 
+// 'msg' should describe the situation (can be a constant string).
+// [NB] Code in the <FINALLY> section will be executed anyway unless this macro
+// is called from the <FINALLY> section.
+#define TEST_FAILED(msg) {    \
+    TRACE0(msg);              \
+    test_passed_flag = FALSE; \
+    tet_result(TET_FAIL);     \
+    RETURN;                   \
+}
+
 // Use this macro to abort test purpose execution if something wrong happens
 // with its local data(e.g. memory allocation failure etc.)
 // [NB] Code in the <FINALLY> section will be executed anyway unless this macro
