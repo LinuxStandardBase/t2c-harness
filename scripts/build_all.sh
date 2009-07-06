@@ -20,25 +20,37 @@ WORK_DIR=$(cd `dirname $0` && pwd)
 T2C_SUITE_ROOT=${WORK_DIR}
 export T2C_SUITE_ROOT
 
-# Default paths for LSB 
+# ------------------------------------------
+# Default paths for LSB stuff
 if [ -z ${LSB_ROOT} ]
 then
     export LSB_ROOT=/opt/lsb
 fi
 
+# Find the appropriate LSB library directory 
 if [ -z ${LSB_LIB_DIR} ]
 then
-    if [ -d "${LSB_ROOT}/lib64" ]; then
+    ARCHNAME=`uname -m`
+    ARCH64=`echo "${ARCHNAME}" | grep 64`
+
+    if [ -z "${ARCH64}" ]; then 
+        ARCH64=`echo "${ARCHNAME}" | grep -i s390x`
+    fi 
+
+    if [ -n "${ARCH64}" ]; then 
         LSB_LIB_DIR=${LSB_ROOT}/lib64
-    else
+    fi 
+
+    if [ ! -d "${LSB_LIB_DIR}" ]; then
         LSB_LIB_DIR=${LSB_ROOT}/lib
     fi
+
     export LSB_LIB_DIR
 fi
 
 echo "LSB_ROOT is ${LSB_ROOT}, LSB_LIB_DIR is ${LSB_LIB_DIR}"
 
-#------------------------------------
+# ------------------------------------------
 cd ${T2C_SUITE_ROOT}
 
 if [ -z ${TET_ROOT} ]
