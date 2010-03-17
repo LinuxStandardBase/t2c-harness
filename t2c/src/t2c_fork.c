@@ -242,7 +242,7 @@ t2c_fork(TChildFunc childfunc, TParentControlFunc pcf, int waittime,
             sprintf(buf, "Child process timed out.");
             tet_infoline(buf);
             
-            tet_result(T2C_TIME_EXPIRED);
+            tet_result(TET_UNRESOLVED);
             t2c_killwait(t2c_child, T2C_KILLWAIT);
                         
             t2c_child = savchild;
